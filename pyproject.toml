@@ -18,6 +18,8 @@ dependencies = [
     "watchdog>=3.0.0",
     "weaviate-client>=4.0.0",
     "pymilvus>=2.4.4",
+    "pyyaml>=6.0.2",
+    "jsonschema>=4.25.0",
 ]
 
 [tool.ruff.lint]

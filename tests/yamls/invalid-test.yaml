@@ -1,0 +1,10 @@
+# Invalid YAML file for testing CLI validation
+# This file has syntax errors to test error handling
+
+database:
+  type: milvus
+  host: localhost
+  port: 19530
+  collection_name: test_collection
+  # Missing closing quote - this will cause a YAML parsing error
+  api_version: "v1 

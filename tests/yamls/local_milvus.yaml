@@ -1,0 +1,12 @@
+apiVersion: maestro/v1alpha1
+kind: VectorDatabase
+metadata:
+  name: local_milvus
+  labels:
+    app: testdb
+spec:
+  type: milvus
+  uri: localhost:19530
+  collection_name: test_collection
+  embedding: text-embedding-3-small
+  mode: local

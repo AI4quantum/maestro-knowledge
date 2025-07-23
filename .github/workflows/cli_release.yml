@@ -1,0 +1,91 @@
+name: CLI Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: Build CLI Release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go-version: ['1.21']
+        
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+          
+      - name: Build CLI
+        working-directory: ./cli
+        run: |
+          echo "Building maestro-k CLI for ${{ matrix.os }}..."
+          go mod download
+          
+          # Set output name based on OS
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            OUTPUT_NAME="maestro-k.exe"
+          else
+            OUTPUT_NAME="maestro-k"
+          fi
+          
+          # Build with version info
+          VERSION=${{ github.ref_name }}
+          BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')
+          
+          go build -ldflags="-s -w -X main.version=$VERSION -X main.buildTime=$BUILD_TIME" \
+            -o "../$OUTPUT_NAME" ./src
+          
+          chmod +x "../$OUTPUT_NAME"
+          echo "Build successful: $OUTPUT_NAME"
+          
+      - name: Test CLI
+        working-directory: ./cli
+        run: |
+          echo "Running CLI tests..."
+          ./tests.sh
+          echo "All tests passed!"
+          
+      - name: Test CLI functionality
+        run: |
+          echo "Testing CLI functionality..."
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            ./maestro-k.exe --version
+            ./maestro-k.exe --help
+            ./maestro-k.exe validate --help
+          else
+            ./maestro-k --version
+            ./maestro-k --help
+            ./maestro-k validate --help
+          fi
+          
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-k-${{ matrix.os }}
+          path: |
+            maestro-k*
+            maestro-k.exe
+          retention-days: 30
+          
+      - name: Show CLI info
+        run: |
+          echo "CLI binary information:"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            ls -lh maestro-k.exe
+            file maestro-k.exe
+            echo "CLI version:"
+            ./maestro-k.exe --version
+          else
+            ls -lh maestro-k
+            file maestro-k
+            echo "CLI version:"
+            ./maestro-k --version
+          fi 

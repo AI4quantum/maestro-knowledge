@@ -199,6 +199,9 @@ See the [examples/](examples/) directory for usage examples:
 
 # Or run individual test files
 python -m pytest tests/
+
+# Run YAML schema validation tests
+pytest tests/test_vector_database_yamls.py -v
 ```
 
 ## Project Structure
@@ -221,11 +224,18 @@ maestro-knowledge/
 ├── tests/                   # Test suite
 │   ├── test_vector_db_*.py  # Vector database tests
 │   ├── test_mcp_server.py   # MCP server tests
-│   └── test_integration_*.py # Integration tests
+│   ├── test_integration_*.py # Integration tests
+│   ├── test_vector_database_yamls.py # YAML schema validation tests
+│   └── yamls/               # YAML configuration examples
+│       ├── local_milvus.yaml
+│       └── remote_weaviate.yaml
 ├── examples/                # Usage examples
 │   ├── weaviate_example.py  # Weaviate usage
 │   ├── milvus_example.py    # Milvus usage
 │   └── mcp_example.py       # MCP server usage
+├── schemas/                 # JSON schemas
+│   ├── vector-database-schema.json # Vector database configuration schema
+│   └── README.md            # Schema documentation
 └── docs/                    # Documentation
     └── CONTRIBUTING.md      # Contribution guidelines
 ```

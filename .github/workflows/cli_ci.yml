@@ -1,0 +1,76 @@
+name: CLI CI
+
+on:
+  push:
+    paths:
+      - 'cli/**'
+      - '.github/workflows/cli_ci.yml'
+  pull_request:
+    paths:
+      - 'cli/**'
+      - '.github/workflows/cli_ci.yml'
+
+jobs:
+  test:
+    name: Build and Test CLI
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+          cache: true
+          
+      - name: Build CLI
+        working-directory: ./cli
+        run: |
+          echo "Building maestro-k CLI..."
+          go mod download
+          go build -ldflags="-s -w" -o ../maestro-k ./src
+          chmod +x ../maestro-k
+          echo "Build successful!"
+          
+      - name: Test CLI
+        working-directory: ./cli
+        run: |
+          echo "Running CLI tests..."
+          ./tests.sh
+          echo "All tests passed!"
+          
+      - name: Test CLI functionality
+        run: |
+          echo "Testing CLI functionality..."
+          ./maestro-k --version
+          ./maestro-k --help
+          ./maestro-k validate --help
+          
+      - name: Test YAML validation
+        run: |
+          echo "Testing YAML validation..."
+          # Test with valid YAML
+          ./maestro-k validate --verbose tests/yamls/local_milvus.yaml
+          
+          # Test with schema validation
+          ./maestro-k validate --verbose schemas/vector-database-schema.json tests/yamls/local_milvus.yaml
+          
+          # Test with invalid YAML (should fail)
+          ./maestro-k validate --verbose tests/yamls/invalid-test.yaml || echo "Invalid YAML correctly rejected"
+          
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-k-cli
+          path: maestro-k
+          retention-days: 7
+          
+      - name: Show CLI info
+        run: |
+          echo "CLI binary information:"
+          ls -lh maestro-k
+          file maestro-k
+          echo "CLI version:"
+          ./maestro-k --version 

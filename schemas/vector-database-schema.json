@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Vector Database Configuration Schema",
+  "description": "Schema for validating vector database configurations in Maestro",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "pattern": "^maestro/v1alpha1$",
+      "description": "API version for Maestro vector database configurations"
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["VectorDatabase"],
+      "description": "Resource kind - must be VectorDatabase"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique name for the vector database configuration"
+        },
+        "labels": {
+          "type": "object",
+          "properties": {
+            "app": {
+              "type": "string",
+              "description": "Application label for the database"
+            }
+          },
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Optional labels for the configuration"
+        }
+      },
+      "additionalProperties": false
+    },
+    "spec": {
+      "type": "object",
+      "required": ["type", "uri", "collection_name", "embedding", "mode"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["milvus", "weaviate"],
+          "description": "Type of vector database (milvus or weaviate)"
+        },
+        "uri": {
+          "type": "string",
+          "description": "Connection URI for the vector database. For local: host:port, for remote: full URL"
+        },
+        "collection_name": {
+          "type": "string",
+          "description": "Name of the collection to use in the vector database"
+        },
+        "embedding": {
+          "type": "string",
+          "description": "Embedding model to use (e.g., text-embedding-3-small)"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["local", "remote"],
+          "description": "Deployment mode - local or remote"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+} 
