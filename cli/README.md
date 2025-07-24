@@ -1,59 +1,29 @@
 # Maestro Knowledge CLI
 
-A command-line interface for the Maestro Knowledge system, built in Go using the Cobra library.
-
-## Overview
-
-The `maestro-k` CLI provides tools for validating YAML configuration files and schemas used in the Maestro Knowledge system. It's designed to be fast, reliable, and easy to use.
+A command-line interface for interacting with the Maestro Knowledge MCP server.
 
 ## Features
 
-- **YAML Validation**: Validate YAML files against JSON schemas
-- **Default Schema**: Automatically uses the project's vector database schema when no schema is provided
-- **Vector Database Management**: Create and delete vector database resources
-- **Field Overrides**: Override YAML configuration values with command-line options
-- **Flexible Input**: Support for both single YAML file validation and schema + YAML file validation
-- **Verbose Output**: Detailed logging for debugging and troubleshooting
-- **Silent Mode**: Clean output for CI/CD pipelines
-- **Dry Run Mode**: Preview operations without making changes
+- **List vector databases**: List all available vector database instances
+- **Environment variable support**: Configure MCP server URI via environment variables
+- **Command-line flag override**: Override MCP server URI via command-line flags
+- **Dry-run mode**: Test commands without making actual changes
+- **Verbose output**: Get detailed information about operations
+- **Silent mode**: Suppress success messages
 
 ## Installation
 
 ### Prerequisites
 
 - Go 1.21 or later
-- Git
+- Access to a running Maestro Knowledge MCP server
 
-### Building from Source
+### Building
 
-1. Navigate to the CLI directory:
-   ```bash
-   cd cli
-   ```
-
-2. Download dependencies:
-   ```bash
-   go mod download
-   ```
-
-3. Build the binary:
-   ```bash
-   go build -o ../maestro-k ./src
-   ```
-
-4. (Optional) Install globally:
-   ```bash
-   go install ./src
-   ```
-
-### Using the Build Script
-
-From the CLI directory, run:
 ```bash
-./build.sh
+cd cli
+go build -o maestro-k src/*.go
 ```
-
-This will build the `maestro-k` binary in the parent directory.
 
 ## Usage
 
@@ -61,154 +31,164 @@ This will build the `maestro-k` binary in the parent directory.
 
 ```bash
 # Show help
-maestro-k --help
+./maestro-k --help
 
 # Show version
-maestro-k --version
-
-# Validate a YAML file (uses default vector database schema)
-maestro-k validate config.yaml
-
-# Validate a YAML file against a specific schema
-maestro-k validate schema.json config.yaml
-
-# Create a vector database from YAML file
-maestro-k create vector-db config.yaml
-
-# Create a vector database with field overrides
-maestro-k create vector-db config.yaml --uri=localhost:8000 --mode=local
+./maestro-k --version
 
 # List vector databases
-maestro-k list vector-db
+./maestro-k list vector-db
 
-# Delete a vector database by name
-maestro-k delete vector-db my-database
+# List vector databases with verbose output
+./maestro-k list vector-db --verbose
 ```
 
-### Global Options
+### MCP Server Configuration
 
-- `--verbose`: Show detailed output including file paths and validation steps
-- `--silent`: Suppress success messages (useful for CI/CD)
-- `--dry-run`: Preview what would be validated without actually performing validation
+The CLI can connect to an MCP server using several methods:
+
+#### 1. Environment Variable (Recommended)
+
+Set the `MAESTRO_KNOWLEDGE_MCP_SERVER_URI` environment variable:
+
+```bash
+export MAESTRO_KNOWLEDGE_MCP_SERVER_URI="http://localhost:8030"
+./maestro-k list vector-db
+```
+
+#### 2. .env File
+
+Create a `.env` file in the current directory:
+
+```bash
+echo "MAESTRO_KNOWLEDGE_MCP_SERVER_URI=http://localhost:8030" > .env
+./maestro-k list vector-db
+```
+
+#### 3. Command-line Flag
+
+Override the MCP server URI via command-line flag:
+
+```bash
+./maestro-k list vector-db --mcp-server-uri="http://localhost:8030"
+```
+
+**Priority order**: Command-line flag > Environment variable > .env file > Default (http://localhost:8000)
+
+### Global Flags
+
+- `--verbose`: Show detailed output
+- `--silent`: Suppress success messages
+- `--dry-run`: Test commands without making changes
+- `--mcp-server-uri`: Override MCP server URI
+- `--help`: Show help information
+- `--version`: Show version information
+
+### List Command
+
+The `list` command displays information about vector databases:
+
+```bash
+# List all vector databases
+./maestro-k list vector-db
+
+# List with verbose output
+./maestro-k list vector-db --verbose
+
+# Test the command without connecting to server
+./maestro-k list vector-db --dry-run
+```
+
+#### Output Format
+
+When databases are found, the output shows:
+- Database name and type
+- Collection name
+- Document count
+
+Example:
+```
+Found 2 vector database(s):
+
+1. project_a_db (weaviate)
+   Collection: ProjectADocuments
+   Documents: 15
+
+2. project_b_db (milvus)
+   Collection: ProjectBDocuments
+   Documents: 8
+```
+
+## Examples
+
+### Complete Workflow
+
+1. **Start the MCP server**:
+   ```bash
+   cd /path/to/maestro-knowledge
+   ./start.sh --http
+   ```
+
+2. **List databases**:
+   ```bash
+   cd cli
+   ./maestro-k list vector-db --mcp-server-uri="http://localhost:8030"
+   ```
+
+3. **List with verbose output**:
+   ```bash
+   ./maestro-k list vector-db --mcp-server-uri="http://localhost:8030" --verbose
+   ```
 
 ### Examples
 
-```bash
-# Basic validation (uses default vector database schema)
-maestro-k validate my-config.yaml
+See the [examples/](examples/) directory for usage examples:
 
-# Verbose validation with custom schema
-maestro-k validate --verbose schema.json my-config.yaml
+- [example_usage.sh](examples/example_usage.sh) - Comprehensive CLI usage demonstration with MCP server
 
-# Silent validation for CI/CD
-maestro-k validate --silent config.yaml
+### Testing
 
-# Dry run to see what would be validated
-maestro-k validate --dry-run config.yaml
-
-# Create vector database with field overrides
-maestro-k create vector-db config.yaml --uri=localhost:8000 --mode=local --verbose
-
-# Dry run creation to preview changes
-maestro-k create vector-db config.yaml --dry-run
-
-# Delete vector database with verbose output
-maestro-k delete vector-db my-database --verbose
-
-# List vector databases with verbose output
-maestro-k list vector-db --verbose
-```
-
-## Command Reference
-
-### `create` Command
-
-Creates vector database resources from YAML files.
+Run the integration test suite:
 
 ```bash
-maestro-k create (vector-database | vector-db) YAML_FILE [flags]
+./test_integration.sh
 ```
 
-**Flags:**
-- `--type string`: Override the database type (milvus, weaviate)
-- `--uri string`: Override the connection URI
-- `--collection-name string`: Override the collection name
-- `--embedding string`: Override the embedding model
-- `--mode string`: Override the deployment mode (local, remote)
+This will test:
+- CLI help functionality
+- Dry-run mode
+- Verbose mode
+- Environment variable support
+- Command-line flag override
+- .env file support
 
-**Examples:**
-```bash
-# Create from YAML file
-maestro-k create vector-db config.yaml
+## Troubleshooting
 
-# Create with field overrides
-maestro-k create vector-db config.yaml --uri=localhost:8000 --mode=local
+### Connection Issues
 
-# Dry run to preview
-maestro-k create vector-db config.yaml --dry-run --verbose
-```
+If you get connection errors:
 
-### `list` Command
+1. **Check if the MCP server is running**:
+   ```bash
+   cd /path/to/maestro-knowledge
+   ./stop.sh status
+   ```
 
-Lists vector database resources.
+2. **Verify the server URI**:
+   ```bash
+   ./maestro-k list vector-db --mcp-server-uri="http://localhost:8030" --verbose
+   ```
 
-```bash
-maestro-k list (vector-database | vector-db) [flags]
-```
+3. **Check server logs**:
+   ```bash
+   tail -f /path/to/maestro-knowledge/mcp_server.log
+   ```
 
-**Examples:**
-```bash
-# List all vector databases
-maestro-k list vector-db
+### Common Issues
 
-# List with verbose output
-maestro-k list vector-db --verbose
-
-# Dry run to preview listing
-maestro-k list vector-db --dry-run
-```
-
-### `delete` Command
-
-Deletes vector database resources by name.
-
-```bash
-maestro-k delete (vector-database | vector-db) NAME [flags]
-```
-
-**Examples:**
-```bash
-# Delete by name
-maestro-k delete vector-db my-database
-
-# Delete with verbose output
-maestro-k delete vector-db my-database --verbose
-
-# Dry run to preview
-maestro-k delete vector-db my-database --dry-run
-```
-
-### `validate` Command
-
-Validates YAML files against schemas.
-
-**Syntax:**
-```bash
-maestro-k validate [YAML_FILE] [SCHEMA_FILE]
-```
-
-**Arguments:**
-- `YAML_FILE`: Path to the YAML file to validate
-- `SCHEMA_FILE`: (Optional) Path to the JSON schema file. If not provided, uses default schema.
-
-**Examples:**
-```bash
-# Validate against default schema
-maestro-k validate config.yaml
-
-# Validate against custom schema
-maestro-k validate schema.json config.yaml
-```
+- **"connection refused"**: MCP server is not running or wrong port
+- **"HTTP error 404"**: Wrong endpoint or server not configured correctly
+- **"failed to parse database list"**: Server response format issue
 
 ## Development
 
@@ -217,118 +197,45 @@ maestro-k validate schema.json config.yaml
 ```
 cli/
 ├── src/
-│   ├── main.go          # Main entry point
-│   └── validate.go      # Validate command implementation
+│   ├── main.go          # Main CLI entry point
+│   ├── list.go          # List command implementation
+│   ├── create.go        # Create command (placeholder)
+│   ├── delete.go        # Delete command (placeholder)
+│   ├── validate.go      # Validate command (placeholder)
+│   └── mcp_client.go    # MCP server client
+├── examples/
+│   ├── example_usage.sh # Comprehensive CLI usage examples
+│   └── README.md        # Examples documentation
 ├── tests/
-│   ├── main_test.go     # Core CLI tests
+│   ├── list_test.go     # List command tests
+│   ├── create_test.go   # Create command tests
+│   ├── delete_test.go   # Delete command tests
 │   ├── validate_test.go # Validate command tests
-│   ├── go.mod           # Test module configuration
-│   └── yamls/           # Test YAML files
-│       ├── local_milvus.yaml
-│       └── remote_weaviate.yaml
-├── build.sh             # Build script
-├── tests.sh             # Test runner script
-├── go.mod               # Go module file
+│   └── main_test.go     # Main CLI tests
+├── go.mod               # Go module dependencies
 ├── go.sum               # Go module checksums
-├── README.md            # This file
-└── USAGE.md             # Original usage reference
+├── test_integration.sh  # Integration test script
+└── README.md           # This file
 ```
 
 ### Adding New Commands
 
-To add a new command:
-
-1. Create a new file (e.g., `newcommand.go`)
+1. Create a new command file (e.g., `src/new_command.go`)
 2. Define the command using Cobra
-3. Add it to the root command in `main.go`
-
-Example:
-```go
-var newCmd = &cobra.Command{
-    Use:   "new",
-    Short: "Description of the new command",
-    RunE: func(cmd *cobra.Command, args []string) error {
-        // Implementation here
-        return nil
-    },
-}
-
-// In main.go, add:
-rootCmd.AddCommand(newCmd)
-```
+3. Add the command to `main.go`
+4. Update this README
 
 ### Testing
 
-#### CLI Tests Only
-Run tests from the CLI directory:
 ```bash
-./tests.sh
+# Run integration tests
+./test_integration.sh
+
+# Build and test manually
+go build -o maestro-k src/*.go
+./maestro-k --help
 ```
-
-Or run tests manually:
-```bash
-go test -v ./tests/
-```
-
-#### Combined Testing (from project root)
-The main `tests.sh` script in the project root now supports running both Python and CLI tests:
-
-```bash
-# Run Python tests only (default)
-./tests.sh
-
-# Run CLI tests only
-./tests.sh cli
-
-# Run both Python and CLI tests
-./tests.sh all
-```
-
-## Error Handling
-
-The CLI follows these error handling conventions:
-
-- **File Not Found**: Returns clear error messages with file paths
-- **Validation Errors**: Provides detailed feedback about what failed validation
-- **Invalid Arguments**: Shows usage help when arguments are incorrect
-- **Exit Codes**: Uses appropriate exit codes (0 for success, 1 for errors)
-
-## CI/CD
-
-The CLI has automated CI/CD workflows:
-
-### Continuous Integration
-- **Trigger**: Push to `cli/` directory or pull requests
-- **Workflow**: `.github/workflows/cli_ci.yml`
-- **Actions**: Builds CLI, runs tests, validates functionality
-- **Artifacts**: Uploads CLI binary for 7 days
-
-### Release Builds
-- **Trigger**: GitHub releases
-- **Workflow**: `.github/workflows/cli_release.yml`
-- **Actions**: Builds CLI for multiple platforms (Linux, macOS, Windows)
-- **Artifacts**: Uploads platform-specific binaries for 30 days
-
-### Local Workflow Testing
-```bash
-# Validate workflows locally
-.github/workflows/validate_workflows.sh
-
-# Test workflow steps locally (now integrated into main tests.sh)
-./tests.sh cli
-
-# Test with act (if installed)
-act push -W .github/workflows/cli_ci.yml
-```
-
-## Contributing
-
-1. Follow Go coding conventions
-2. Add tests for new functionality
-3. Update documentation for new commands
-4. Ensure all tests pass before submitting
-5. CI/CD will automatically validate your changes
 
 ## License
 
-This CLI is part of the Maestro Knowledge project and follows the same license terms. 
+MIT License - see the main project LICENSE file for details. 

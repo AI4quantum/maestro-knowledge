@@ -8,11 +8,12 @@ import (
 )
 
 var (
-	version   = "0.1.0"
-	buildTime = "unknown"
-	verbose   bool
-	silent    bool
-	dryRun    bool
+	version      = "0.1.0"
+	buildTime    = "unknown"
+	verbose      bool
+	silent       bool
+	dryRun       bool
+	mcpServerURI string
 )
 
 func main() {
@@ -29,6 +30,7 @@ A command-line interface for working with Maestro Knowledge configurations.`,
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "", false, "Show all output")
 	rootCmd.PersistentFlags().BoolVarP(&silent, "silent", "", false, "Show no additional output on success, e.g., no OK or Success etc")
 	rootCmd.PersistentFlags().BoolVarP(&dryRun, "dry-run", "", false, "Mocks agents and other parts of workflow execution")
+	rootCmd.PersistentFlags().StringVar(&mcpServerURI, "mcp-server-uri", "", "MCP server URI (overrides MAESTRO_KNOWLEDGE_MCP_SERVER_URI environment variable)")
 
 	// Add commands
 	rootCmd.AddCommand(validateCmd)
