@@ -38,6 +38,6 @@ filterwarnings = [
 ]
 
 [project.optional-dependencies]
-test = [
+dev = [
     "pytest>=8.0.0",
 ]

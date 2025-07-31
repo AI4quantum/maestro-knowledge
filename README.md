@@ -22,47 +22,28 @@ A modular vector database interface supporting multiple backends (Weaviate, Milv
 First, clone the repository and navigate into the directory:
 
 ```bash
-git clone [https://github.com/your-username/maestro-knowledge.git](https://github.com/your-username/maestro-knowledge.git)
+git clone <repository-url>
 cd maestro-knowledge
 ```
 
-You will need Python 3.11+ and `uv`. You can install `uv` with:
-```bash
-pip install uv
-```
-Then, create and activate a virtual environment:
+You will need [Python](https://www.python.org/) 3.11+ and [uv](https://docs.astral.sh/uv/#highlights).
+
+
+
+Create and activate a virtual environment:
+
 ```bash
 uv venv
 source .venv/bin/activate
 ```
 
----
-
-#### For Users (Reproducible Environment)
-
-This command synchronizes your environment with the exact runtime dependencies needed to run the application. It will **not** install developer tools like `pytest`.
+Next, install the required dependencies:
 
 ```bash
 uv sync
 ```
 
----
-
-#### For Developers (Clean & Editable Install)
-
-This two-step process ensures you have a clean, reproducible environment while still benefiting from an **editable** installation, which is essential for development.
-
-```bash
-# Step 1: Create a clean environment with all dependencies.
-# This installs all runtime AND test dependencies, removing any others.
-uv sync --extra test
-
-# Step 2: Make the project editable.
-# This links your source code to the environment without reinstalling dependencies.
-uv pip install -e . --no-deps
-```
-
-**Note:** If you install other packages for experimentation, you can clean your environment at any time by re-running `uv sync --extra test`.
+This should be rerun after pulling changes to ensure all dependencies are up-to-date.
 
 ### Basic Usage
 
