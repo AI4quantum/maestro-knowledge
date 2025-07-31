@@ -7,7 +7,7 @@ from .vector_db_milvus import MilvusVectorDatabase
 
 
 def create_vector_database(
-    db_type: str = None, collection_name: str = "MaestroDocs"
+    db_type: str = None, collection_name: str = "MaestroDocs", dimension: int = None
 ) -> VectorDatabase:
     """
     Factory function to create vector database instances.
@@ -24,6 +24,6 @@ def create_vector_database(
     if db_type.lower() == "weaviate":
         return WeaviateVectorDatabase(collection_name)
     elif db_type.lower() == "milvus":
-        return MilvusVectorDatabase(collection_name)
+        return MilvusVectorDatabase(collection_name, dimension=dimension)
     else:
         raise ValueError(f"Unsupported vector database type: {db_type}")

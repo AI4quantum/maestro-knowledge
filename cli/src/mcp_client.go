@@ -255,13 +255,18 @@ func (c *MCPClient) ListDatabases() ([]DatabaseInfo, error) {
 }
 
 // CreateVectorDatabase calls the create_vector_database_tool on the MCP server
-func (c *MCPClient) CreateVectorDatabase(dbName, dbType, collectionName string) error {
+func (c *MCPClient) CreateVectorDatabase(dbName, dbType, collectionName string, dimension int) error {
 	params := map[string]interface{}{
 		"input": map[string]interface{}{
 			"db_name":         dbName,
 			"db_type":         dbType,
 			"collection_name": collectionName,
 		},
+	}
+
+	// Only include dimension if it's greater than 0
+	if dimension > 0 {
+		params["input"].(map[string]interface{})["dimension"] = dimension
 	}
 
 	response, err := c.callMCPServer("create_vector_database_tool", params)

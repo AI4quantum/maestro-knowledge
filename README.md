@@ -78,6 +78,7 @@ The library supports flexible embedding strategies for both vector databases:
 - `text-embedding-ada-002`: OpenAI's Ada-002 embedding model
 - `text-embedding-3-small`: OpenAI's text-embedding-3-small model
 - `text-embedding-3-large`: OpenAI's text-embedding-3-large model
+- `custom_local`: Uses a custom, local embedding endpoint (e.g., Ollama). Requires `CUSTOM_EMBEDDING_URL`, `CUSTOM_EMBEDDING_MODEL` environment variable, and optionally `CUSTOM_EMBEDDING_API_KEY`.
 
 ### Usage Examples
 
@@ -99,6 +100,8 @@ db.write_documents(documents_with_vectors, embedding="default")
 
 #### Using Embedding Models
 
+Simple example:
+
 ```python
 # Documents without vectors (will be generated using embedding model)
 documents_without_vectors = [
@@ -114,6 +117,36 @@ db.write_documents(documents_without_vectors, embedding="text-embedding-ada-002"
 
 # Use Weaviate's built-in vectorizer
 db.write_documents(documents_without_vectors, embedding="text2vec-weaviate")
+
+```
+
+Using milvus with a custom embedding :
+
+Ensure `CUSTOM_EMBEDDING_URL` and `CUSTOM_EMBEDDING_MODEL` are set in your environment variables, and optionally `CUSTOM_EMBEDDING_API_KEY` if your model requires authentication.
+
+```bash
+export CUSTOM_EMBEDDING_URL="http://localhost:11434/v1/"
+export CUSTOM_EMBEDDING_MODEL="nomic-embed-text"
+export CUSTOM_EMBEDDING_API_KEY="your-api-key"  # Optional
+```
+Then, you can create a Milvus database with a custom local embedding model:
+
+```python
+# Create a Milvus database with a specific dimension for a custom model (must match model)
+db = create_vector_database("milvus", "MyCustomCollection", dimension=768)
+db.setup(embedding="custom_local") # Setup with custom local model
+
+# Documents without vectors (will be generated using embedding model)
+documents_without_vectors = [
+    {
+        "url": "https://example.com/doc1",
+        "text": "Machine learning algorithms",
+        "metadata": {"topic": "ML"}
+    }
+]
+
+# Use the custom local model
+db.write_documents(documents_without_vectors, embedding="custom_local")
 ```
 
 #### Checking Supported Embeddings

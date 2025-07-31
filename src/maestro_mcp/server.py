@@ -43,6 +43,10 @@ class CreateVectorDatabaseInput(BaseModel):
     collection_name: str = Field(
         default="MaestroDocs", description="Name of the collection to use"
     )
+    dimension: int = Field(
+        default=None,
+        description="The vector dimension for the collection. If None, it will be inferred from the embedding model.",
+    )
 
 
 class SetupDatabaseInput(BaseModel):
@@ -201,7 +205,7 @@ def create_mcp_server() -> FastMCP:
 
             # Create new database instance
             vector_databases[input.db_name] = create_vector_database(
-                input.db_type, input.collection_name
+                input.db_type, input.collection_name, input.dimension
             )
 
             logger.info(
@@ -437,30 +441,50 @@ def create_mcp_server() -> FastMCP:
     @app.tool()
     async def delete_collection(input: DeleteCollectionInput) -> str:
         """Delete an entire collection from a vector database."""
-        db = get_database_by_name(input.db_name)
+        if input.db_name in vector_databases:
+            db = get_database_by_name(input.db_name)
 
-        # Check if the collection exists
-        collections = db.list_collections()
-        # Normalize both sides for comparison
-        normalized_input = input.collection_name.strip().lower()
-        normalized_collections = [str(c).strip().lower() for c in collections]
-        if normalized_input not in normalized_collections:
-            raise ValueError(
-                f"Collection '{input.collection_name}' not found in vector database '{input.db_name}'"
-            )
+            # Check if the collection exists
+            collections = db.list_collections()
+            # Normalize both sides for comparison
 
-        db.delete_collection(input.collection_name)
+            normalized_input = input.collection_name.strip().lower()
+            normalized_collections = [str(c).strip().lower() for c in collections]
+            if normalized_input not in normalized_collections:
+                raise ValueError(
+                    f"Collection '{input.collection_name}' not found in vector database '{input.db_name}'"
+                )
 
-        return f"Successfully deleted collection '{input.collection_name}' from vector database '{input.db_name}'"
+            db.delete_collection(input.collection_name)
+
+            return f"Successfully deleted collection '{input.collection_name}' from vector database '{input.db_name}'"
+        try:
+            from ..db.vector_db_milvus import MilvusVectorDatabase
+
+            temp_db = MilvusVectorDatabase(collection_name=input.collection_name)
+            temp_db.delete_collection(input.collection_name)
+            return f"Successfully dropped collection '{input.collection_name}' from Milvus (untracked)."
+        except Exception as e:
+            return f"Delete collection failed: {str(e)}"
 
     @app.tool()
     async def cleanup(input: CleanupInput) -> str:
         """Clean up resources and close connections for a vector database."""
-        db = get_database_by_name(input.db_name)
-        db.cleanup()
-        del vector_databases[input.db_name]
+        if input.db_name in vector_databases:
+            db = get_database_by_name(input.db_name)
+            db.cleanup()
+            del vector_databases[input.db_name]
+            return (
+                f"Successfully cleaned up and removed vector database '{input.db_name}'"
+            )
+        try:
+            from ..db.vector_db_milvus import MilvusVectorDatabase
 
-        return f"Successfully cleaned up and removed vector database '{input.db_name}'"
+            temp_db = MilvusVectorDatabase(collection_name=input.db_name)
+            temp_db.delete_collection(input.db_name)
+            return f"Successfully dropped collection '{input.db_name}' from Milvus (untracked)."
+        except Exception as e:
+            return f"Cleanup failed: {str(e)}"
 
     @app.tool()
     async def get_database_info(input: GetDatabaseInfoInput) -> str:
@@ -579,6 +603,17 @@ async def run_http_server(host: str = "localhost", port: int = 8030):
     print(f"Open your browser to http://{host}:{port} to access the MCP server")
     print(f"📖 OpenAPI docs: http://{host}:{port}/docs")
     print(f"📚 ReDoc docs: http://{host}:{port}/redoc")
+
+    import os
+
+    custom_url = os.getenv("CUSTOM_EMBEDDING_URL")
+    if custom_url:
+        custom_model = os.getenv("CUSTOM_EMBEDDING_MODEL", "nomic-embed-text")
+        print("🧬 Custom Embedding Endpoint is configured:")
+        print(f"   - URL:    {custom_url}")
+        print(f"   - Model:  {custom_model}")
+    else:
+        print("🧬 Using default OpenAI embedding configuration.")
 
     # Run the MCP server directly
     await mcp_app.run_http_async(host=host, port=port)

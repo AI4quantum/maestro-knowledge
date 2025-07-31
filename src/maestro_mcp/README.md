@@ -59,6 +59,9 @@ The MCP server supports flexible embedding strategies for both vector databases:
 - `text-embedding-ada-002`: OpenAI's Ada-002 embedding model
 - `text-embedding-3-small`: OpenAI's text-embedding-3-small model
 - `text-embedding-3-large`: OpenAI's text-embedding-3-large model
+- `text-embedding-3-large`: OpenAI's text-embedding-3-large model
+- `custom_local`: Uses a custom, local embedding endpoint. Requires `CUSTOM_EMBEDDING_URL` and `CUSTOM_EMBEDDING_MODEL` environment variables, plus optionally `CUSTOM_EMBEDDING_API_KEY`.
+
 
 ## Multi-Database Support
 
@@ -136,7 +139,8 @@ Here's how an AI agent might interact with multiple vector databases:
        "input": {
          "db_name": "project_b_db",
          "db_type": "milvus",
-         "collection_name": "ProjectBDocuments"
+         "collection_name": "ProjectBDocuments",
+        "dimension": 768
        }
      }
    }

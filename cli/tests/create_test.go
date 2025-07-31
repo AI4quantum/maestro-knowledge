@@ -268,3 +268,38 @@ spec:
 		t.Errorf("Should show dry run message, got: %s", outputStr)
 	}
 }
+
+// TestCreateVectorDatabaseWithDimension tests the create command with a dimension override
+func TestCreateVectorDatabaseWithDimension(t *testing.T) {
+	// Create a valid YAML file for testing
+	validYAML := `---
+apiVersion: maestro/v1alpha1
+kind: VectorDatabase
+metadata:
+  name: test-milvus-dimension
+spec:
+  type: milvus
+  uri: localhost:19530
+  collection_name: test_collection
+  embedding: text-embedding-3-small
+  mode: local
+`
+
+	tempFile := createTempFile(t, "valid-*.yaml", validYAML)
+	defer os.Remove(tempFile)
+
+	cmd := exec.Command("../maestro-k", "create", "vector-db", tempFile, "--dimension=768", "--verbose", "--dry-run")
+	output, err := cmd.CombinedOutput()
+
+	if err != nil {
+		t.Fatalf("Create command failed with dimension override: %v, output: %s", err, string(output))
+	}
+
+	outputStr := string(output)
+	if !contains(outputStr, "Overriding dimension: 0 -> 768") {
+		t.Errorf("Should show dimension override, got: %s", outputStr)
+	}
+	if !contains(outputStr, "[DRY RUN] Would create vector database") {
+		t.Errorf("Should show dry run message, got: %s", outputStr)
+	}
+}

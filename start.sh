@@ -153,6 +153,15 @@ start_http_server() {
         print_status "Loading environment variables from .env file..."
         export $(grep -v '^#' "$SCRIPT_DIR/.env" | xargs)
     fi
+
+    if [ -n "$CUSTOM_EMBEDDING_URL" ]; then
+        print_info "🧬 Custom Embedding Endpoint is configured:"
+        print_info "   - URL:    $CUSTOM_EMBEDDING_URL"
+        # Use a default for the model if the variable isn't set
+        print_info "   - Model:  ${CUSTOM_EMBEDDING_MODEL:-nomic-embed-text}"
+    else
+        print_info "🧬 Using default OpenAI embedding configuration."
+    fi
     
     # Start the HTTP server in background
     python -c "

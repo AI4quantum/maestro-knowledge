@@ -76,5 +76,6 @@ func init() {
 		cmd.Flags().StringVar(&overrideCollectionName, "collection-name", "", "Override the collection name")
 		cmd.Flags().StringVar(&overrideEmbedding, "embedding", "", "Override the embedding model")
 		cmd.Flags().StringVar(&overrideMode, "mode", "", "Override the deployment mode (local, remote)")
+		cmd.Flags().IntVar(&overrideDimension, "dimension", 0, "Override the vector dimension for the collection")
 	}
 }
