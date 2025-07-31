@@ -441,6 +441,15 @@ wheels = [
 ]
 
 [[package]]
+name = "iniconfig"
+version = "2.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f2/97/ebf4da567aa6827c909642694d71c9fcf53e5b504f2d96afea02718862f3/iniconfig-2.1.0.tar.gz", hash = "sha256:3abbd2e30b36733fee78f9c7f7308f2d0050e88f0087fd25c2645f63c773e1c7", size = 4793, upload_time = "2025-03-19T20:09:59.721Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2c/e1/e6716421ea10d38022b952c159d5161ca1193197fb744506875fbb87ea7b/iniconfig-2.1.0-py3-none-any.whl", hash = "sha256:9deba5723312380e77435581c6bf4935c94cbfab9b1ed33ef8d238ea168eb760", size = 6050, upload_time = "2025-03-19T20:10:01.071Z" },
+]
+
+[[package]]
 name = "jiter"
 version = "0.10.0"
 source = { registry = "https://pypi.org/simple" }
@@ -601,7 +610,12 @@ dependencies = [
     { name = "requests" },
     { name = "uvicorn" },
     { name = "watchdog" },
-    { name = "weaviate-client" },
+    { name = "weaviate-client", extra = ["agents"] },
+]
+
+[package.optional-dependencies]
+test = [
+    { name = "pytest" },
 ]
 
 [package.metadata]
@@ -614,6 +628,7 @@ requires-dist = [
     { name = "openai", specifier = ">=1.0.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pymilvus", specifier = ">=2.5.14" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0.0" },
     { name = "python-docx", specifier = ">=0.8.11" },
     { name = "python-magic", specifier = ">=0.4.27" },
     { name = "python-multipart", specifier = ">=0.0.5" },
@@ -621,8 +636,9 @@ requires-dist = [
     { name = "requests", specifier = ">=2.31.0" },
     { name = "uvicorn", specifier = ">=0.27.0" },
     { name = "watchdog", specifier = ">=3.0.0" },
-    { name = "weaviate-client", specifier = ">=4.0.0" },
+    { name = "weaviate-client", extras = ["agents"], specifier = ">=4.0.0" },
 ]
+provides-extras = ["test"]
 
 [[package]]
 name = "markdown-it-py"
@@ -821,6 +837,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pluggy"
+version = "1.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload_time = "2025-05-15T12:30:07.975Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload_time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
 name = "protobuf"
 version = "5.29.5"
 source = { registry = "https://pypi.org/simple" }
@@ -974,6 +999,22 @@ name = "pyperclip"
 version = "1.9.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/30/23/2f0a3efc4d6a32f3b63cdff36cd398d9701d26cda58e3ab97ac79fb5e60d/pyperclip-1.9.0.tar.gz", hash = "sha256:b7de0142ddc81bfc5c7507eea19da920b92252b548b96186caf94a5e2527d310", size = 20961, upload_time = "2024-06-18T20:38:48.401Z" }
+
+[[package]]
+name = "pytest"
+version = "8.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "iniconfig" },
+    { name = "packaging" },
+    { name = "pluggy" },
+    { name = "pygments" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/08/ba/45911d754e8eba3d5a841a5ce61a65a685ff1798421ac054f85aa8747dfb/pytest-8.4.1.tar.gz", hash = "sha256:7c67fd69174877359ed9371ec3af8a3d2b04741818c51e5e99cc1742251fa93c", size = 1517714, upload_time = "2025-06-18T05:48:06.109Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/29/16/c8a903f4c4dffe7a12843191437d7cd8e32751d5de349d45d3fe69544e87/pytest-8.4.1-py3-none-any.whl", hash = "sha256:539c70ba6fcead8e78eebbf1115e8b589e7565830d7d006a8723f19ac8a0afb7", size = 365474, upload_time = "2025-06-18T05:48:03.955Z" },
+]
 
 [[package]]
 name = "python-dateutil"
@@ -1437,6 +1478,20 @@ wheels = [
 ]
 
 [[package]]
+name = "weaviate-agents"
+version = "0.12.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx-sse" },
+    { name = "rich" },
+    { name = "weaviate-client" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2e/28/ffab64f98310b4d67ad91fb239a78930ca7b640caadca22aecd31f691672/weaviate_agents-0.12.0.tar.gz", hash = "sha256:a0a6765c7c7b502823c9113400d71b1fa536bfd06f68ba2bc183ba87add11461", size = 91087, upload_time = "2025-07-23T06:32:32.591Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fb/18/50dde36abb0bf6beed640fc03469401175513fc37a7e0409fe1b3fa3f9f2/weaviate_agents-0.12.0-py3-none-any.whl", hash = "sha256:f8150d1b7126e06276e8aa8605826ceb34787177bd4eb4bff6c0581fb9220e20", size = 36571, upload_time = "2025-07-23T06:32:31.502Z" },
+]
+
+[[package]]
 name = "weaviate-client"
 version = "4.16.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1452,4 +1507,9 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/43/09/fefbffd499da6d46d897eecde4942a5ce4880dc8fdccbbd2363704a6ba32/weaviate_client-4.16.3.tar.gz", hash = "sha256:e0c7f160787623fefcee0bfe2d160ad1b2f0178c5d1d92fea41de124a0cb1b2a", size = 779601, upload_time = "2025-07-22T07:59:49.873Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8f/7a/97cfe61a6610eacd9b81691052c50c01d100eb4b136fb9a4ccccabf098c7/weaviate_client-4.16.3-py3-none-any.whl", hash = "sha256:e970db032ce8ce20e9dc56d25fd1944d06fe90976c29b4ae56c3aa2991ab81f1", size = 597232, upload_time = "2025-07-22T07:59:48.084Z" },
+]
+
+[package.optional-dependencies]
+agents = [
+    { name = "weaviate-agents" },
 ]

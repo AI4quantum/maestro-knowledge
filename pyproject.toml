@@ -16,7 +16,7 @@ dependencies = [
     "requests>=2.31.0",
     "uvicorn>=0.27.0",
     "watchdog>=3.0.0",
-    "weaviate-client>=4.0.0",
+    "weaviate-client[agents]>=4.0.0",
     "pymilvus>=2.5.14",
     "pyyaml>=6.0.2",
     "jsonschema>=4.25.0",
@@ -35,4 +35,9 @@ filterwarnings = [
     "ignore::UserWarning:google.protobuf.runtime_version",
     # Suppress our own warning in test_list_collections_exception test
     "ignore::UserWarning:src.db.vector_db_weaviate",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
 ]
