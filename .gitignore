@@ -189,17 +189,7 @@ cython_debug/
 .abstra/
 
 # Visual Studio Code
-#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
-#  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-# Copied here, but excluded settings - but contains personal/system dependent paths and preferences
-.vscode/*
-# Settings contains personal paths
-#!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-!.vscode/*.code-snippets
-!*.code-workspace
+.vscode
 
 # Built Visual Studio Code Extensions
 *.vsix
