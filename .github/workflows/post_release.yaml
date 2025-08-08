@@ -1,0 +1,35 @@
+name: Post Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  followup-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: run bump_version.py
+        run: |
+          python tools/bump_version.py
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: follow-up after release ${{ github.ref_name }}"
+          branch: followup-${{ github.ref_name }}-${{ github.run_id }}
+          base: main
+          title: "chore: follow-up after release ${{ github.ref_name }}"
+          body: |
+            This PR was automatically created after tagging `${{ github.ref_name }}` to:
+            - Bump `pyproject.toml` to next development version
