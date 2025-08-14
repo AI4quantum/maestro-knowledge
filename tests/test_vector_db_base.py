@@ -124,8 +124,13 @@ class ConcreteVectorDatabase(VectorDatabase):
     def cleanup(self):
         self.documents = []
 
-    def query(self, query: str, limit: int = 5) -> str:
+    def query(self, query: str, limit: int = 5, collection_name: str = None) -> str:
         return f"Dummy query response: {query} (limit={limit})"
+
+    def search(
+        self, query: str, limit: int = 5, collection_name: str = None
+    ) -> list[dict]:
+        return [{"result": f"Dummy search response: {query} (limit={limit})"}]
 
 
 class TestConcreteVectorDatabase:

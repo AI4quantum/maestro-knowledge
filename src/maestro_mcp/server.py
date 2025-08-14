@@ -9,6 +9,7 @@ import os
 from typing import Any, Dict, List
 
 from fastmcp import FastMCP
+from fastmcp.tools.tool import ToolResult
 from pydantic import BaseModel, Field
 
 from ..db.vector_db_factory import create_vector_database
@@ -197,6 +198,15 @@ class CreateCollectionInput(BaseModel):
 
 
 class QueryInput(BaseModel):
+    db_name: str = Field(..., description="Name of the vector database instance")
+    query: str = Field(..., description="The query string to search for")
+    limit: int = Field(default=5, description="Maximum number of results to consider")
+    collection_name: str = Field(
+        default=None, description="Optional collection name to search in"
+    )
+
+
+class SearchInput(BaseModel):
     db_name: str = Field(..., description="Name of the vector database instance")
     query: str = Field(..., description="The query string to search for")
     limit: int = Field(default=5, description="Maximum number of results to consider")
@@ -594,6 +604,20 @@ def create_mcp_server() -> FastMCP:
             return response
         except Exception as e:
             error_msg = f"Failed to query vector database '{input.db_name}': {str(e)}"
+            logger.error(error_msg)
+            return f"Error: {error_msg}"
+
+    @app.tool()
+    async def search(input: SearchInput) -> ToolResult:
+        """Search a vector database using vector similarity search."""
+        try:
+            db = get_database_by_name(input.db_name)
+            response = db.search(
+                input.query, limit=input.limit, collection_name=input.collection_name
+            )
+            return response
+        except Exception as e:
+            error_msg = f"Failed to search vector database '{input.db_name}': {str(e)}"
             logger.error(error_msg)
             return f"Error: {error_msg}"
 

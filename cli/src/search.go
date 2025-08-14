@@ -7,17 +7,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	docLimit int
-)
 
-var queryCmd = &cobra.Command{
-	Use:   "query",
-	Short: "Query documents using natural language",
-	Long: `Query documents in a vector database using natural language.
-	
+
+var searchCmd = &cobra.Command{
+	Use:   "search",
+	Short: "Search documents using natural language",
+	Long: `Search documents in a vector database using natural language.
+
 This command allows you to ask questions about documents stored in a vector database.
-The query agent will search through the documents and provide relevant answers.`,
+The query agent will search through the documents and return relevant documents.`,
 	Example: `  maestro-k query "What is the main topic of the documents?" --vdb=my-vdb
   maestro-k query "Find information about API endpoints" --vdb=my-vdb --doc-limit 10`,
 	Args: cobra.ExactArgs(1),
@@ -28,7 +26,7 @@ The query agent will search through the documents and provide relevant answers.`
 
 		// Validate inputs
 		if strings.TrimSpace(query) == "" {
-			return fmt.Errorf("query cannot be empty")
+			return fmt.Errorf("search cannot be empty")
 		}
 
 		// Use interactive selection if vdb name is not provided
@@ -45,15 +43,15 @@ The query agent will search through the documents and provide relevant answers.`
 			collectionName = "Test_collection_lowercase" // Default collection
 		}
 
-		return queryVectorDatabase(vdbName, query, collectionName)
+		return searchVectorDatabase(vdbName, query, collectionName)
 	},
 }
 
-func queryVectorDatabase(dbName, query, collectionName string) error {
+func searchVectorDatabase(dbName, query, collectionName string) error {
 	// Initialize progress indicator
 	var progress *ProgressIndicator
 	if ShouldShowProgress() {
-		progress = NewProgressIndicator("Processing query...")
+		progress = NewProgressIndicator("Processing search...")
 		progress.Start()
 	}
 
@@ -65,7 +63,7 @@ func queryVectorDatabase(dbName, query, collectionName string) error {
 		if progress != nil {
 			progress.Stop("Dry run completed")
 		}
-		fmt.Println("[DRY RUN] Would query vector database")
+		fmt.Println("[DRY RUN] Would search vector database")
 		return nil
 	}
 
@@ -97,32 +95,29 @@ func queryVectorDatabase(dbName, query, collectionName string) error {
 	defer client.Close()
 
 	if progress != nil {
-		progress.Update("Executing query...")
+		progress.Update("Executing search...")
 	}
 
-	// Call the query method
-	result, err := client.Query(dbName, query, docLimit, collectionName)
+	// Call the search method
+	result, err := client.Search(dbName, query, docLimit, collectionName)
 	if err != nil {
 		if progress != nil {
-			progress.StopWithError("Query failed")
+			progress.StopWithError("Search failed")
 		}
-		return fmt.Errorf("failed to query vector database: %w", err)
+		return fmt.Errorf("failed to search vector database: %w", err)
 	}
 
 	if progress != nil {
-		progress.Stop("Query completed successfully")
+		progress.Stop("Search completed successfully")
 	}
 
-	if !silent {
-		fmt.Println("OK")
-	}
 	fmt.Println(result)
 	return nil
 }
 
 func init() {
-	// Add flags to query command
-	queryCmd.Flags().String("vdb", "", "Vector database name")
-	queryCmd.Flags().String("collection", "", "Collection name to search in")
-	queryCmd.Flags().IntVarP(&docLimit, "doc-limit", "d", 5, "Maximum number of documents to consider")
+	// Add flags to search command
+	searchCmd.Flags().String("vdb", "", "Vector database name")
+	searchCmd.Flags().String("collection", "", "Collection name to search in")
+	searchCmd.Flags().IntVarP(&docLimit, "doc-limit", "d", 5, "Maximum number of documents to consider")
 }

@@ -669,6 +669,44 @@ func (c *MCPClient) Query(dbName, query string, limit int, collectionName string
 	return resultStr, nil
 }
 
+// Search calls the search tool on the MCP server
+func (c *MCPClient) Search(dbName, query string, limit int, collectionName string) (string, error) {
+	params := map[string]interface{}{
+		"input": map[string]interface{}{
+			"db_name":         dbName,
+			"query":           query,
+			"limit":           limit,
+			"collection_name": collectionName,
+		},
+	}
+
+	response, err := c.callMCPServer("search", params)
+	if err != nil {
+		return "", err
+	}
+
+	// Check for error in response
+	if response.Error != nil {
+		return "", fmt.Errorf("MCP server error: %s", response.Error.Message)
+	}
+
+	// The response should be a string with the search result
+	if response.Result == nil {
+		return "", fmt.Errorf("no response from MCP server")
+	}
+
+	resultStr, ok := response.Result.(string)
+	if !ok {
+        prettyJSON, err := json.MarshalIndent(response.Result, "", "  ")
+        if err != nil {
+            return "", fmt.Errorf("unexpected response type from MCP server")
+        }
+		return string(prettyJSON), nil
+	}
+
+	return resultStr, nil
+}
+
 // Close closes the MCP client
 func (c *MCPClient) Close() error {
 	// Cancel the context to prevent context leaks

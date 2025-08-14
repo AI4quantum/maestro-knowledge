@@ -637,13 +637,14 @@ class MilvusVectorDatabase(VectorDatabase):
         Args:
             query: The query string to search for
             limit: Maximum number of results to consider
+            collection_name: Optional collection name to search in (defaults to self.collection_name)
 
         Returns:
             A string response with relevant information from the database
         """
         try:
             # Perform vector similarity search
-            documents = self._search_documents(query, limit, collection_name)
+            documents = self.search(query, limit, collection_name)
 
             if not documents:
                 return f"No relevant documents found for query: '{query}'"
@@ -673,15 +674,16 @@ class MilvusVectorDatabase(VectorDatabase):
             warnings.warn(f"Failed to query Milvus: {e}")
             return f"Error querying database: {str(e)}"
 
-    def _search_documents(
+    def search(
         self, query: str, limit: int = 5, collection_name: str = None
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
-        Search for documents using vector similarity search.
+        Search for documents using Milvus vector similarity search.
 
         Args:
             query: The search query text
             limit: Maximum number of results to return
+            collection_name: Optional collection name to search in (defaults to self.collection_name)
 
         Returns:
             List of documents sorted by relevance
@@ -699,10 +701,9 @@ class MilvusVectorDatabase(VectorDatabase):
 
             # Perform vector similarity search
             results = self.client.search(
-                collection_name or self.collection_name,
+                collection_name=collection_name or self.collection_name,
                 data=[query_vector],
                 anns_field="vector",
-                param={"metric_type": "COSINE", "params": {"nprobe": 10}},
                 limit=limit,
                 output_fields=["id", "url", "text", "metadata"],
             )

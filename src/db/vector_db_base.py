@@ -263,9 +263,27 @@ class VectorDatabase(ABC):
         Args:
             query: The query string to search for
             limit: Maximum number of results to consider
+            collection_name: Optional collection name to search in
 
         Returns:
             A string response with relevant information from the database
+        """
+        pass
+
+    @abstractmethod
+    def search(
+        self, query: str, limit: int = 5, collection_name: str = None
+    ) -> list[dict]:
+        """
+        Search for documents using vector similarity search.
+
+        Args:
+            query: The search query text
+            limit: Maximum number of results to return
+            collection_name: Optional collection name to search in
+
+        Returns:
+            List of documents sorted by relevance
         """
         pass
 

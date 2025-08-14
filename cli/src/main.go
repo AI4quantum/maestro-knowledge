@@ -80,6 +80,12 @@ func addContextualHelp() {
 			ShowContextualHelp("query", "")
 		}
 	}
+
+	searchCmd.PostRun = func(cmd *cobra.Command, args []string) {
+		if !silent {
+			ShowContextualHelp("search", "")
+		}
+	}
 }
 
 func main() {
@@ -115,6 +121,7 @@ A command-line interface for working with Maestro Knowledge configurations.`,
 	rootCmd.AddCommand(documentCmd)
 	rootCmd.AddCommand(embeddingCmd)
 	rootCmd.AddCommand(queryCmd)
+	rootCmd.AddCommand(searchCmd)
 	rootCmd.AddCommand(validateCmd)
 	rootCmd.AddCommand(statusCmd)
 

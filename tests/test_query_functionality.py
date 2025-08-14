@@ -138,11 +138,23 @@ class ConcreteQueryVectorDatabase(VectorDatabase):
     def create_query_agent(self):
         return self.query_agent
 
-    def query(self, query: str, limit: int = 5) -> str:
+    def query(self, query: str, limit: int = 5, collection_name: str = None) -> str:
         """Test implementation of query method."""
         try:
             # Mock the query agent response
             self.query_agent.run.return_value = f"Response to: {query}"
+            response = self.query_agent.run(query)
+            return response
+        except Exception as e:
+            return f"Error querying database: {str(e)}"
+
+    def search(
+        self, query: str, limit: int = 5, collection_name: str = None
+    ) -> list[dict]:
+        """Test implementation of search method."""
+        try:
+            # Mock the query agent response
+            self.query_agent.run.return_value = [{"result": f"Response to: {query}"}]
             response = self.query_agent.run(query)
             return response
         except Exception as e:
