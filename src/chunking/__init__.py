@@ -10,6 +10,7 @@ from .fixed import fixed_chunk
 # Re-export strategy names for discovery if needed
 from .none import none_chunk
 from .sentence import sentence_chunk
+from .semantic_chunking import semantic_chunk
 
 __all__ = [
     "ChunkingConfig",
@@ -17,4 +18,5 @@ __all__ = [
     "none_chunk",
     "fixed_chunk",
     "sentence_chunk",
+    "semantic_chunk",
 ]
