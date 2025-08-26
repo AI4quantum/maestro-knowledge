@@ -188,6 +188,7 @@ var documentCreateCmd = &cobra.Command{
 		collectionName, _ := cmd.Flags().GetString("collection")
 		documentName, _ := cmd.Flags().GetString("name")
 		fileName, _ := cmd.Flags().GetString("file")
+		embedding, _ := cmd.Flags().GetString("embedding")
 
 		// Use interactive selection if vdb name is not provided
 		if vdbName == "" {
@@ -214,8 +215,9 @@ var documentCreateCmd = &cobra.Command{
 			return fmt.Errorf("--file flag is required")
 		}
 
-		// Set the documentFileName variable that createDocument expects
+		// Set the documentFileName and embedding variable that createDocument expects
 		documentFileName = fileName
+		documentEmbedding = embedding
 
 		return createDocument(vdbName, collectionName, documentName)
 	},
@@ -312,6 +314,7 @@ func init() {
 	documentCreateCmd.Flags().String("collection", "", "Collection name")
 	documentCreateCmd.Flags().String("name", "", "Document name")
 	documentCreateCmd.Flags().String("file", "", "File path")
+	documentCreateCmd.Flags().String("embedding", "", "Embedding name")
 	documentDeleteCmd.Flags().String("vdb", "", "Vector database name")
 	documentDeleteCmd.Flags().String("collection", "", "Collection name")
 
