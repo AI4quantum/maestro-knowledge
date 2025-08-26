@@ -238,7 +238,9 @@ def create_mcp_server() -> FastMCP:
                     "document_count": db.count_documents(),
                 }
             )
-        return PlainTextResponse(f"Available vector databases:\n{json.dumps(db_list, indent=2)}")
+        return PlainTextResponse(
+            f"Available vector databases:\n{json.dumps(db_list, indent=2)}"
+        )
 
     @app.tool()
     async def create_vector_database_tool(input: CreateVectorDatabaseInput) -> str:
