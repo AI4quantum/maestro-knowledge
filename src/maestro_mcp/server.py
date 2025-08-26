@@ -493,11 +493,11 @@ def create_mcp_server() -> FastMCP:
                 },
                 "description": "Semantic chunking using sentence embeddings and similarity to create coherent chunks.",
                 "defaults": {
-                    "chunk_size": 1000, 
-                    "overlap": 0, 
-                    "window_size": 1, 
+                    "chunk_size": 1000,
+                    "overlap": 0,
+                    "window_size": 1,
                     "threshold_percentile": 95.0,
-                    "model_name": "all-MiniLM-L6-v2"
+                    "model_name": "all-MiniLM-L6-v2",
                 },
             },
         ]
