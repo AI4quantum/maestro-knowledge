@@ -54,13 +54,13 @@ def test_fixed_empty_text_returns_no_chunks():
 
 
 def test_fixed_defaults_apply_when_params_missing():
-    # Only set strategy; expect defaults chunk_size=512, overlap=0
-    text = "a" * 600
+    # Only set strategy; expect defaults chunk_size=1000, overlap=0
+    text = "a" * 1200
     cfg = ChunkingConfig(strategy="Fixed", parameters={})
     res = chunk_text(text, cfg)
     assert len(res) == 2
     assert res[0]["offset_start"] == 0
-    assert res[1]["offset_start"] == 512
+    assert res[1]["offset_start"] == 1000
 
 
 def test_fixed_near_max_overlap_many_steps():
