@@ -10,6 +10,8 @@ from typing import Any, Dict, List
 
 from fastmcp import FastMCP
 from fastmcp.tools.tool import ToolResult
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
 from ..db.vector_db_factory import create_vector_database
@@ -220,6 +222,23 @@ def create_mcp_server() -> FastMCP:
 
     # Create FastMCP server directly
     app = FastMCP("maestro-vector-db")
+
+    @app.custom_route("/health", methods=["GET"])
+    async def health_check(request: Request) -> PlainTextResponse:
+        if not vector_databases:
+            PlainTextResponse("No vector databases are currently active")
+
+        db_list = []
+        for db_name, db in vector_databases.items():
+            db_list.append(
+                {
+                    "name": db_name,
+                    "type": db.db_type,
+                    "collection": db.collection_name,
+                    "document_count": db.count_documents(),
+                }
+            )
+        return PlainTextResponse(f"Available vector databases:\n{json.dumps(db_list, indent=2)}")
 
     @app.tool()
     async def create_vector_database_tool(input: CreateVectorDatabaseInput) -> str:
