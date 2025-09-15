@@ -589,6 +589,7 @@ class TestMilvusVectorDatabase:
             db.get_document("test_doc", "test_collection")
 
     @patch("pymilvus.MilvusClient")
+    @pytest.mark.filterwarnings("ignore:Failed to connect to Milvus")
     def test_get_document_no_client(self, mock_milvus_client: MagicMock) -> None:
         """Test getting a document when client is not available."""
         mock_milvus_client.side_effect = Exception("Connection failed")
