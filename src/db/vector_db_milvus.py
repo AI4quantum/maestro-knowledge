@@ -575,7 +575,7 @@ class MilvusVectorDatabase(VectorDatabase):
         target_collection = collection_name or self.collection_name
         try:
             # Query for all records with matching metadata.doc_name
-            results = self.client.query(
+            results = await self.client.query(
                 target_collection,
                 filter=f'metadata["doc_name"] == "{doc_id}"',
                 output_fields=["id", "url", "text", "metadata"],
@@ -640,7 +640,7 @@ class MilvusVectorDatabase(VectorDatabase):
 
         try:
             # Query all documents, paginated
-            results = self.client.query(
+            results = await self.client.query(
                 self.collection_name,
                 output_fields=["id", "url", "text", "metadata"],
                 limit=limit,
@@ -716,7 +716,7 @@ class MilvusVectorDatabase(VectorDatabase):
                 return []
 
             # Query documents from the specific collection
-            results = self.client.query(
+            results = await self.client.query(
                 collection_name,
                 output_fields=["id", "url", "text", "metadata"],
                 limit=limit,
