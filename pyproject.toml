@@ -75,4 +75,5 @@ dev = [
     "ruff>=0.12.7",
     "bandit>=1.8.6",
     "safety>=3.2.9",
+    "pre-commit>=4.2.0"
 ]
