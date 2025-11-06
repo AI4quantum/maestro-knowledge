@@ -11,6 +11,8 @@ from collections.abc import Awaitable, Callable
 
 from fastmcp import FastMCP
 from fastmcp.tools.tool import ToolResult
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 from pydantic import BaseModel, Field
@@ -1554,12 +1556,29 @@ async def run_http_server(host: str = "localhost", port: int = 8030) -> None:
     # Create the MCP server
     mcp_app = await create_mcp_server()
 
+    allowed_origins = [
+        x.strip() for x in os.getenv("CORS_ALLOW_ORIGINS", "").split(",")
+    ]
+    middleware = [
+        Middleware(
+            CORSMiddleware,
+            allow_origins=allowed_origins,
+            allow_methods=["GET", "POST"],
+            allow_headers=[
+                "mcp-protocol-version",
+                "mcp-session-id",
+                "Authorization",
+                "Content-Type",
+            ],
+            expose_headers=["mcp-session-id"],
+        )
+    ]
+
+
     print(f"Starting FastMCP HTTP server on http://{host}:{port}")
     print(f"Open your browser to http://{host}:{port} to access the MCP server")
     print(f"📖 OpenAPI docs: http://{host}:{port}/docs")
     print(f"📚 ReDoc docs: http://{host}:{port}/redoc")
-
-    import os
 
     custom_url = os.getenv("CUSTOM_EMBEDDING_URL")
     if custom_url:
@@ -1568,7 +1587,7 @@ async def run_http_server(host: str = "localhost", port: int = 8030) -> None:
         print(f"   - Model:  {custom_model}")
     else:
         print("🧬 Using default OpenAI embedding configuration.")
-    await mcp_app.run_http_async(host=host, port=port)
+    await mcp_app.run_http_async(host=host, port=port, middleware=middleware)
 
 
 def run_server() -> None:
