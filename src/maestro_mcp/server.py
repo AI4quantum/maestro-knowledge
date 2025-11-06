@@ -1574,7 +1574,6 @@ async def run_http_server(host: str = "localhost", port: int = 8030) -> None:
         )
     ]
 
-
     print(f"Starting FastMCP HTTP server on http://{host}:{port}")
     print(f"Open your browser to http://{host}:{port} to access the MCP server")
     print(f"📖 OpenAPI docs: http://{host}:{port}/docs")
