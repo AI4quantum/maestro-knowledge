@@ -46,8 +46,9 @@ filterwarnings = [
     # Suppress asyncio loop warnings from cancelled database operations - these occur during timeout handling
     "ignore:.*got Future.*attached to a different loop:UserWarning",
 ]
-# Enable async test support
+# Enable async test support with session-scoped event loop for E2E tests
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
 
 # Test configuration
 testpaths = ["tests"]

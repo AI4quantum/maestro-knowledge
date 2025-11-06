@@ -423,7 +423,24 @@ class GetSupportedEmbeddingsInput(BaseModel):
 class WriteDocumentsInput(BaseModel):
     db_name: str = Field(..., description="Name of the vector database instance")
     documents: list[dict[str, Any]] = Field(
-        ..., description="List of documents to write"
+        ...,
+        description=(
+            "List of documents to write. Each document is a dict with:\n"
+            "- 'url' (required): Document identifier or URL to fetch from\n"
+            "- 'text' (optional): Direct text content (backwards compatible)\n"
+            "- 'metadata' (optional): Additional metadata dict\n\n"
+            "URL Fetching: If 'url' starts with http:// or https://, the system will:\n"
+            "1. Fetch the content from the URL\n"
+            "2. Auto-detect format (HTML, PDF, Markdown, Text)\n"
+            "3. Convert to plain text\n"
+            "4. Enrich metadata with fetch details\n\n"
+            "Supported formats: HTML (converted via html2text), PDF (requires PyPDF2), "
+            "Markdown (.md), Plain text (.txt)\n\n"
+            "Security: Only HTTP/HTTPS URLs allowed. File paths (file://) restricted to "
+            "current working directory and subdirectories.\n\n"
+            "Backwards Compatible: Providing 'text' directly still works. If both 'url' and 'text' "
+            "are provided, 'text' takes precedence (no fetching occurs)."
+        ),
     )
     # TODO(deprecate): embedding at write-time is deprecated and ignored; embedding is per-collection
     embedding: str = Field(
@@ -764,7 +781,54 @@ async def create_mcp_server() -> FastMCP:
 
     @app.tool()
     async def write_documents(input: WriteDocumentsInput) -> str:
-        """Write documents to a vector database. Embedding at write-time is deprecated; collection embedding is used. Returns JSON with stats and collection info."""
+        """
+        Write documents to a vector database with automatic URL fetching and format conversion.
+
+        This tool supports both direct text provision (backwards compatible) and automatic
+        fetching from URLs with format detection and conversion.
+
+        Key Features:
+        - URL Fetching: Automatically fetches content from http:// or https:// URLs
+        - Format Detection: Auto-detects HTML, PDF, Markdown, and plain text
+        - Format Conversion: Converts HTML (via html2text) and PDF (via PyPDF2) to plain text
+        - Security: Only HTTP/HTTPS allowed; file:// paths restricted to CWD and subdirectories
+        - Backwards Compatible: Direct 'text' field still works; takes precedence over URL fetching
+        - Metadata Enrichment: Fetched documents get enriched with content_type, fetched_at, etc.
+
+        Document Format:
+        Each document in the 'documents' list should be a dict with:
+        - 'url' (required): Document identifier or URL to fetch from
+        - 'text' (optional): Direct text content (if provided, no fetching occurs)
+        - 'metadata' (optional): Additional metadata dict
+
+        Supported URL Formats:
+        - HTML pages: Converted to markdown-style text
+        - PDF files: Text extracted (requires PyPDF2 installed)
+        - Markdown files (.md): Preserved as-is
+        - Text files (.txt): Preserved as-is
+
+        Security Restrictions:
+        - Only http:// and https:// protocols allowed for remote URLs
+        - file:// URLs restricted to current working directory and subdirectories
+        - No directory traversal (../) allowed in file paths
+        - 30-second timeout for URL fetching
+
+        Limitations:
+        - PDF conversion is basic text extraction (no OCR, no complex layouts)
+        - HTML conversion may not preserve all formatting
+        - Large files may hit timeout limits
+        - Embedding is configured per-collection, not per-document
+
+        Returns:
+        JSON string with:
+        - status: "ok" or "error"
+        - message: Summary of operation
+        - write_stats: Statistics about chunks written
+        - collection_info: Updated collection information
+        - sample_query_suggestion: Suggested query to test the collection
+
+        Note: Embedding at write-time is deprecated; collection-level embedding is used.
+        """
         db = get_database_by_name(input.db_name)
         # Deprecation: ignore per-document embedding; use collection embedding
         if input.embedding and input.embedding != "default":
@@ -845,7 +909,31 @@ async def create_mcp_server() -> FastMCP:
 
     @app.tool()
     async def write_document(input: WriteDocumentInput) -> str:
-        """Write a single document to a vector database. Embedding at write-time is deprecated; collection embedding is used. Returns JSON with stats and collection info."""
+        """
+        Write a single document to a vector database with automatic URL fetching and format conversion.
+
+        This is a convenience wrapper around write_documents for single document operations.
+        Supports the same URL fetching and format conversion features.
+
+        Parameters:
+        - db_name: Name of the vector database instance
+        - url: Document identifier or URL to fetch from (http://, https://, or file://)
+        - text: Direct text content (if provided, no URL fetching occurs)
+        - metadata: Additional metadata dict (optional)
+        - vector: Pre-computed embedding vector for Milvus (optional)
+
+        URL Fetching Behavior:
+        - If 'text' is provided: Uses text directly, no fetching
+        - If 'text' is empty and 'url' starts with http/https: Fetches and converts content
+        - Supported formats: HTML, PDF, Markdown, Plain text
+        - Security: Same restrictions as write_documents
+
+        Returns:
+        JSON string with status, message, write_stats, and collection_info.
+
+        Note: For batch operations, use write_documents instead for better performance.
+        Embedding is configured per-collection, not per-document.
+        """
         db = get_database_by_name(input.db_name)
         document: dict[str, Any] = {
             "url": input.url,

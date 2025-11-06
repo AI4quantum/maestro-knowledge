@@ -1,9 +1,13 @@
 # SPDX-License-Identifier: Apache 2.0
 # Copyright (c) 2025 IBM
 
+import logging
 import warnings
 from abc import ABC, abstractmethod
-from typing import Any
+from datetime import datetime
+from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 # Suppress Pydantic deprecation warnings from dependencies
 warnings.filterwarnings(
@@ -26,6 +30,118 @@ class VectorDatabase(ABC):
     def __init__(self, collection_name: str = "MaestroDocs") -> None:
         """Initialize the vector database with a collection name."""
         self.collection_name = collection_name
+        # Initialize converter infrastructure (lazy loaded)
+        self._fetcher: Optional[Any] = None
+        self._detector: Optional[Any] = None
+        self._registry: Optional[Any] = None
+
+    def _get_converter_infrastructure(self) -> tuple[Any, Any, Any]:
+        """Lazy load converter infrastructure.
+
+        Returns:
+            Tuple of (fetcher, detector, registry)
+        """
+        if self._fetcher is None:
+            from src.converters import (
+                ContentDetector,
+                DocumentFetcher,
+                get_converter_registry,
+            )
+
+            self._fetcher = DocumentFetcher()
+            self._detector = ContentDetector()
+            self._registry = get_converter_registry()
+
+        return self._fetcher, self._detector, self._registry
+
+    async def _ensure_document_content(self, doc: dict[str, Any]) -> dict[str, Any]:
+        """Ensure document has text content, fetching and converting if needed.
+
+        This method provides backwards compatibility: if 'text' is provided,
+        use it directly. If 'text' is missing, fetch and convert from 'url'.
+
+        Args:
+            doc: Document dict with 'url' and optionally 'text' and 'metadata'
+
+        Returns:
+            Document dict with 'text' field populated
+
+        Raises:
+            ValueError: If document has neither 'text' nor 'url', or if conversion fails
+        """
+        # If text is already provided, use it (backwards compatible)
+        if "text" in doc and doc["text"]:
+            return doc
+
+        # Need to fetch and convert
+        url = doc.get("url")
+        if not url:
+            raise ValueError("Document must have either 'text' or 'url'")
+
+        logger.debug(f"Fetching and converting document from URL: {url}")
+
+        try:
+            # Get converter infrastructure
+            fetcher, detector, registry = self._get_converter_infrastructure()
+
+            # Fetch content
+            content, fetch_metadata = await fetcher.fetch(url)
+
+            # Detect content type
+            explicit_type = doc.get("content_type")
+            content_type, ext = detector.detect(
+                url=url,
+                headers=fetch_metadata,
+                content=content,
+                explicit_type=explicit_type,
+            )
+
+            logger.debug(f"Detected content type: {content_type}, extension: {ext}")
+
+            # Get converter
+            converter = registry.get_converter(content_type=content_type, extension=ext)
+
+            if not converter:
+                raise ValueError(
+                    f"No converter available for content type: {content_type} "
+                    f"(extension: {ext})"
+                )
+
+            logger.debug(f"Using converter: {converter.name}")
+
+            # Convert to text
+            text = await converter.convert(content, fetch_metadata)
+
+            # Build processed document
+            processed_doc = doc.copy()
+            processed_doc["text"] = text
+
+            # Merge fetch metadata into document metadata
+            if "metadata" not in processed_doc:
+                processed_doc["metadata"] = {}
+
+            processed_doc["metadata"].update(
+                {
+                    "fetched_content_type": content_type,
+                    "fetched_at": datetime.utcnow().isoformat(),
+                    "converter_used": converter.name,
+                }
+            )
+
+            # Add fetch metadata (filter out None values)
+            for key, value in fetch_metadata.items():
+                if value is not None:
+                    processed_doc["metadata"][f"fetched_{key}"] = value
+
+            logger.info(
+                f"Successfully converted document from {url} ({len(text)} characters)"
+            )
+
+            return processed_doc
+
+        except Exception as e:
+            logger.error(f"Failed to fetch/convert document from {url}: {e}")
+            raise ValueError(f"Failed to process document from {url}: {e}")
 
     @property
     @abstractmethod
@@ -311,16 +427,22 @@ class VectorDatabase(ABC):
         """
         return []
 
-    # option to retrieve the full document
-    def reassemble_document(self, chunks: list[dict[str, Any]]) -> dict[str, Any]:
+    # Internal helper to retrieve the full document
+    def _reassemble_chunks_into_document(
+        self, chunks: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """
-        Reassemble a document from its chunks.
+        Internal helper: Reassemble a document from its chunks.
+
+        This is a utility method with a default implementation that can be
+        used by get_document() implementations. The underscore prefix indicates
+        this is an internal helper, not a public API.
 
         Args:
             chunks: A list of document chunks.
 
         Returns:
-            The reassembled document.
+            The reassembled document, or None if chunks is empty or invalid.
         """
         if not chunks:
             return None

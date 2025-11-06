@@ -1,4 +1,4 @@
-# Maestro Knowledge
+ou # Maestro Knowledge
 
 A modular vector database interface supporting multiple backends (Weaviate, Milvus) with a unified API and flexible embedding strategies.
 
@@ -7,6 +7,8 @@ A modular vector database interface supporting multiple backends (Weaviate, Milv
 - **Multi-backend support**: Weaviate and Milvus vector databases
 - **Flexible embedding strategies**: Support for pre-computed vectors and multiple embedding models
 - **Pluggable document chunking**: None (default), Fixed (size/overlap), Sentence-aware, Semantic (AI-powered)
+- **Automatic document ingestion**: Fetch and convert documents from URLs or local files
+- **Pluggable content converters**: Support for text, markdown, HTML, PDF, and extensible to other formats
 - **Unified API**: Consistent interface across different vector database implementations
 - **Factory pattern**: Easy creation and switching between database types
 - **MCP Server**: Model Context Protocol server for AI agent integration with multi-database support
@@ -114,12 +116,23 @@ db = create_vector_database("weaviate", "MyCollection")
 # Set up the database
 db.setup()
 
-# Write documents with default embedding
+# Write documents - now supports automatic URL fetching!
 documents = [
+    # Option 1: Provide text directly (backwards compatible)
     {
-        "url": "https://example.com/doc1",
+        "url": "doc1",
         "text": "This is a document about machine learning.",
         "metadata": {"topic": "ML", "author": "Alice"}
+    },
+    # Option 2: Provide URL - content fetched and converted automatically
+    {
+        "url": "https://example.com/article.html",
+        "metadata": {"topic": "ML"}
+    },
+    # Option 3: Local file path
+    {
+        "url": "file:///path/to/document.pdf",
+        "metadata": {"topic": "Research"}
     }
 ]
 db.write_documents(documents, embedding="default")
@@ -309,6 +322,76 @@ print(f"Supported embeddings: {supported}")
 db.write_documents(documents, embedding="text-embedding-3-small")
 ```
 
+## Document Ingestion
+
+Maestro Knowledge supports automatic document fetching and conversion from URLs. The system will:
+
+1. **Fetch** the content from HTTP/HTTPS URLs
+2. **Detect** the content type (HTML, PDF, Markdown, etc.)
+3. **Convert** to plain text using the appropriate converter
+4. **Enrich** metadata with fetch details
+
+### Supported Formats
+
+| Format | Extensions | Dependencies |
+|--------|-----------|--------------|
+| Plain Text | .txt | None |
+| Markdown | .md | None |
+| HTML | .html, .htm | html2text |
+| PDF | .pdf | PyPDF2 (optional) |
+
+### Usage via MCP Tool
+
+```json
+{
+  "tool": "write_documents",
+  "input": {
+    "db_name": "my_collection",
+    "documents": [
+      {"url": "https://example.com/article.html"},
+      {"url": "https://example.com/paper.pdf"},
+      {"url": "https://example.com/guide.md"}
+    ]
+  }
+}
+```
+
+### Usage via CLI
+
+```bash
+# Using the maestro CLI (separate repository: AI4quantum/maestro-cli)
+maestro write-documents --db-name my_collection \
+  --url "https://example.com/article.html"
+```
+
+### Backwards Compatible
+
+You can still provide text directly (no URL fetching):
+
+```json
+{
+  "tool": "write_documents",
+  "input": {
+    "db_name": "my_collection",
+    "documents": [
+      {"url": "doc1", "text": "Direct text content"},
+      {"url": "https://example.com/doc.pdf"}
+    ]
+  }
+}
+```
+
+### Important Notes
+
+**Document Reassembly**: When retrieving documents with `get_document()`, the text is reassembled from stored chunks. The reassembled text may differ slightly from the original due to:
+- Chunking strategy normalization (e.g., sentence chunking may normalize whitespace)
+- Text processing during conversion (e.g., HTML to text conversion)
+- The reassembled document contains the semantic content but may not be a byte-for-byte copy of the original
+
+For detailed documentation, see:
+- [Implementation Summary](docs/IMPLEMENTATION_SUMMARY.md) - Complete feature documentation
+- [Document Ingestion Example](examples/document_ingestion_example.py) - Working code examples
+
 ## Examples
 
 See the [examples/](examples/) directory for usage examples:
@@ -316,6 +399,7 @@ See the [examples/](examples/) directory for usage examples:
 - [Weaviate Example](examples/weaviate_example.py) - Demonstrates Weaviate with different embedding models and querying
 - [Milvus Example](examples/milvus_example.py) - Shows Milvus with pre-computed vectors, embedding models, and querying
 - [MCP Server Example](examples/mcp_example.py) - Demonstrates MCP server integration including query functionality
+- [Document Ingestion Example](examples/document_ingestion_example.py) - Shows automatic URL fetching and format conversion
 
 ## Available Scripts
 
@@ -422,6 +506,16 @@ maestro-knowledge/
 │   │   ├── mcp_config.json  # MCP client configuration
 │   │   └── README.md        # MCP server documentation
 │   ├── chunking/           # Pluggable document chunking package
+│   ├── converters/         # Document format converters
+│   │   ├── base.py          # Abstract converter base class
+│   │   ├── registry.py      # Converter registry
+│   │   ├── detector.py      # Content type detection
+│   │   ├── fetcher.py       # Document fetching
+│   │   ├── text_converter.py    # Plain text converter
+│   │   ├── markdown_converter.py # Markdown converter
+│   │   ├── html_converter.py    # HTML to markdown converter
+│   │   ├── pdf_converter.py     # PDF text extraction
+│   │   └── fallback_converter.py # Generic fallback
 │   └── vector_db.py         # Main module exports
 ├── start.sh                 # MCP server start script
 ├── stop.sh                  # MCP server stop script
@@ -445,15 +539,17 @@ maestro-knowledge/
 │       └── test_remote_weaviate.yaml
 ├── examples/                # Usage examples
 │   ├── weaviate_example.py  # Weaviate usage
-│   ├── milvate_example.py   # Milvus usage
-│   └── mcp_example.py       # MCP server usage
+│   ├── milvus_example.py    # Milvus usage
+│   ├── mcp_example.py       # MCP server usage
+│   └── document_ingestion_example.py # Document ingestion with URL fetching
 ├── schemas/                 # JSON schemas
 │   ├── vector-database-schema.json # Vector database configuration schema
 │   └── README.md            # Schema documentation
 └── docs/                    # Documentation
     ├── CONTRIBUTING.md      # Contribution guidelines
     ├── CLI_UX_REVIEW.md     # CLI UX review and improvements
-    └── PRESENTATION.md      # Project presentation
+    ├── PRESENTATION.md      # Project presentation
+    └── IMPLEMENTATION_SUMMARY.md # Document ingestion feature documentation
 ```
 
 ## Environment Variables

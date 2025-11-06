@@ -18,6 +18,8 @@ warnings.filterwarnings(
 warnings.filterwarnings(
     "ignore", category=DeprecationWarning, message=".*PydanticDeprecatedSince20.*"
 )
+
+logger = logging.getLogger(__name__)
 warnings.filterwarnings(
     "ignore",
     category=DeprecationWarning,
@@ -403,7 +405,21 @@ class MilvusVectorDatabase(VectorDatabase):
         total_chunks = 0
         build_start = time.perf_counter()
         id_counter = 0
+
+        # Process documents to ensure they have text content
+        processed_documents = []
         for doc in documents:
+            try:
+                processed_doc = await self._ensure_document_content(doc)
+                processed_documents.append(processed_doc)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to process document {doc.get('url', 'unknown')}: {e}"
+                )
+                # Skip documents that fail to process
+                continue
+
+        for doc in processed_documents:
             doc_start = time.perf_counter()
             text = doc.get("text", "")
             orig_metadata = dict(doc.get("metadata", {}))
@@ -457,9 +473,9 @@ class MilvusVectorDatabase(VectorDatabase):
 
                 # Merge metadata and add chunk-specific fields
                 new_meta = dict(orig_metadata)
-                # Retain original doc_name if present
-                if "doc_name" in orig_metadata:
-                    new_meta["doc_name"] = orig_metadata.get("doc_name")
+                # Set doc_name from metadata or fall back to URL
+                if "doc_name" not in new_meta:
+                    new_meta["doc_name"] = doc.get("url", "")
                 # omit chunking policy to reduce per-result duplication in search outputs
                 # Add ordered chunk-specific metadata (start before end)
                 new_meta.update(
@@ -554,17 +570,18 @@ class MilvusVectorDatabase(VectorDatabase):
     async def get_document_chunks(
         self, doc_id: str, collection_name: str = None
     ) -> list[dict[str, Any]]:
-        """Retrieve all chunks for a specific document (by doc_name)."""
+        """Retrieve all chunks for a specific document (by doc_name or URL)."""
         self._ensure_client()
         if self.client is None:
             raise ValueError("Milvus client is not available")
 
         target_collection = collection_name or self.collection_name
         try:
-            # Query for all records with matching metadata.doc_name
+            # Query for all records with matching URL (since metadata is stored as JSON string)
+            # Note: doc_id is typically the URL of the document
             results = await self.client.query(
                 target_collection,
-                filter=f'metadata["doc_name"] == "{doc_id}"',
+                filter=f'url == "{doc_id}"',
                 output_fields=["id", "url", "text", "metadata"],
                 # Retrieve a reasonable upper bound of chunks to allow reassembly
                 limit=10000,
@@ -604,7 +621,7 @@ class MilvusVectorDatabase(VectorDatabase):
             raise ValueError(f"Collection '{target_collection}' not found")
 
         chunks = await self.get_document_chunks(doc_name, collection_name)
-        doc = self.reassemble_document(chunks)
+        doc = self._reassemble_chunks_into_document(chunks)
         if doc is None:
             raise ValueError(
                 f"Document '{doc_name}' not found in collection '{target_collection}'"
@@ -1470,6 +1487,11 @@ class MilvusVectorDatabase(VectorDatabase):
                         await self.client.drop_collection(self.collection_name)
                     except Exception:
                         pass
+            # Explicitly close the async client to release gRPC resources
+            try:
+                await self.client.close()
+            except Exception:
+                pass
         self.client = None
 
     @property

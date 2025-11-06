@@ -3,30 +3,22 @@
 
 echo "🚀 Setting up Milvus for E2E testing..."
 
-# Check if Docker/Podman is available
-CONTAINER_CMD="docker"
-if command -v podman >/dev/null 2>&1; then
-    CONTAINER_CMD="podman"
-    echo "📦 Using Podman for container management"
-elif command -v docker >/dev/null 2>&1; then
-    if ! docker info >/dev/null 2>&1; then
-        echo "❌ Docker is not running. Please start Docker first."
-        exit 1
-    fi
-    echo "📦 Using Docker for container management"
-else
-    echo "❌ Neither Docker nor Podman found. Please install one of them."
+# Use docker directly (works with Docker Desktop, Colima, Podman with docker alias)
+if ! docker info >/dev/null 2>&1; then
+    echo "❌ Docker is not running. Please start Docker first."
+    echo "   For Colima users: colima start"
     exit 1
 fi
+echo "📦 Using Docker for container management"
 
 echo "📦 Starting Milvus container (ARM64 compatible)..."
 
 # Stop existing container if running
-$CONTAINER_CMD stop milvus-simple 2>/dev/null || true
-$CONTAINER_CMD rm milvus-simple 2>/dev/null || true
+docker stop milvus-simple 2>/dev/null || true
+docker rm milvus-simple 2>/dev/null || true
 
 # Start Milvus with ARM64 compatible image and proper standalone configuration
-$CONTAINER_CMD run -d \
+docker run -d \
   --name milvus-simple \
   -p 19530:19530 \
   -p 9091:9091 \
@@ -44,7 +36,7 @@ sleep 15
 # Check if Milvus is responding
 echo "🔍 Testing Milvus connectivity..."
 for i in {1..30}; do
-    if $CONTAINER_CMD exec milvus-simple milvus --help >/dev/null 2>&1; then
+    if docker exec milvus-simple milvus --help >/dev/null 2>&1; then
         echo "✅ Milvus container is responsive!"
         break
     fi
@@ -68,7 +60,7 @@ done
 echo ""
 echo "🔍 Final Service Status:"
 echo "Milvus container:"
-if $CONTAINER_CMD ps | grep milvus-simple | grep -q Up; then
+if docker ps | grep milvus-simple | grep -q Up; then
     echo "  ✅ Container running"
     echo "     Image: milvusdb/milvus:v2.6.1 (ARM64 compatible)"
     echo "     Ports: 19530:19530, 9091:9091"
@@ -104,9 +96,9 @@ echo "uv run pytest tests/e2e/test_mcp_milvus_e2e.py -v -m \"e2e\""
 
 echo ""
 echo "📋 Container Management Commands:"
-echo "  Stop:    $CONTAINER_CMD stop milvus-simple"
-echo "  Start:   $CONTAINER_CMD start milvus-simple"
-echo "  Remove:  $CONTAINER_CMD rm milvus-simple"
-echo "  Logs:    $CONTAINER_CMD logs milvus-simple"
+echo "  Stop:    docker stop milvus-simple"
+echo "  Start:   docker start milvus-simple"
+echo "  Remove:  docker rm milvus-simple"
+echo "  Logs:    docker logs milvus-simple"
 echo ""
 echo "✅ Setup complete! Milvus is ready for E2E testing."

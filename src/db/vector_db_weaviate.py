@@ -2,10 +2,13 @@
 # Copyright (c) 2025 IBM
 
 import json
+import logging
 import warnings
 from typing import Any
 
 import weaviate
+
+logger = logging.getLogger(__name__)
 
 # Suppress all deprecation warnings from external packages immediately
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -255,9 +258,22 @@ class WeaviateVectorDatabase(VectorDatabase):
         total_chunks = 0
         build_start = time.perf_counter()
 
+        # Process documents to ensure they have text content
+        processed_documents = []
+        for doc in documents:
+            try:
+                processed_doc = await self._ensure_document_content(doc)
+                processed_documents.append(processed_doc)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to process document {doc.get('url', 'unknown')}: {e}"
+                )
+                # Skip documents that fail to process
+                continue
+
         try:
             with await collection.batch.dynamic() as batch:
-                for idx, doc in enumerate(documents):
+                for idx, doc in enumerate(processed_documents):
                     doc_start = time.perf_counter()
                     orig_metadata = dict(doc.get("metadata", {}))
                     text = doc.get("text", "")
@@ -485,7 +501,7 @@ class WeaviateVectorDatabase(VectorDatabase):
                     }
                 )
 
-        doc = self.reassemble_document(chunks)
+        doc = self._reassemble_chunks_into_document(chunks)
         if doc is None:
             # If no chunks or unable to reassemble, raise document-not-found with collection context
             raise ValueError(

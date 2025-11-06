@@ -474,9 +474,9 @@ class TestMilvusVectorDatabase:
         assert db.db_type == "milvus"
 
     def test_reassemble_document_no_chunks(self) -> None:
-        """reassemble_document should return None when given no chunks."""
+        """_reassemble_chunks_into_document should return None when given no chunks."""
         db = MilvusVectorDatabase()
-        assert db.reassemble_document([]) is None
+        assert db._reassemble_chunks_into_document([]) is None
 
     @pytest.mark.asyncio
     @patch("pymilvus.AsyncMilvusClient")
