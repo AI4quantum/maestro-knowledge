@@ -1,5 +1,6 @@
 """Integration tests for document ingestion with URL fetching."""
 
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -27,6 +28,9 @@ class TestDocumentIngestionIntegration:
 
         # Create temp file with content
         with tempfile.TemporaryDirectory() as tmpdir:
+            # Allow temp directory for testing
+            os.environ["MAESTRO_ALLOWED_FILE_PATHS"] = tmpdir
+
             test_file = Path(tmpdir) / "test.txt"
             test_content = "This is test content from a file."
             test_file.write_text(test_content)
@@ -40,7 +44,7 @@ class TestDocumentIngestionIntegration:
 
             # Mock embedding function
             with patch.object(
-                db, "_get_embedding_function", return_value=lambda x: [[0.1] * 768]
+                db, "_generate_embedding_async", return_value=[0.1] * 768
             ):
                 await db.write_documents(documents, embedding="custom_local")
 
@@ -49,7 +53,8 @@ class TestDocumentIngestionIntegration:
             call_args = mock_client_instance.insert.call_args
 
             # Verify the document was processed and has text
-            inserted_data = call_args[1]["data"]
+            # insert is called as: insert(collection_name, data)
+            inserted_data = call_args[0][1]  # Second positional argument
             assert len(inserted_data) > 0
             assert "text" in inserted_data[0]
             assert test_content in inserted_data[0]["text"]
@@ -74,9 +79,7 @@ class TestDocumentIngestionIntegration:
         documents = [{"url": "doc1", "text": test_text, "metadata": {}}]
 
         # Mock embedding function
-        with patch.object(
-            db, "_get_embedding_function", return_value=lambda x: [[0.1] * 768]
-        ):
+        with patch.object(db, "_generate_embedding_async", return_value=[0.1] * 768):
             await db.write_documents(documents, embedding="custom_local")
 
         # Verify insert was called
@@ -84,7 +87,8 @@ class TestDocumentIngestionIntegration:
         call_args = mock_client_instance.insert.call_args
 
         # Verify the text was used directly
-        inserted_data = call_args[1]["data"]
+        # insert is called as: insert(collection_name, data)
+        inserted_data = call_args[0][1]  # Second positional argument
         assert len(inserted_data) > 0
         assert inserted_data[0]["text"] == test_text
 
@@ -102,6 +106,9 @@ class TestDocumentIngestionIntegration:
 
         # Create temp file
         with tempfile.TemporaryDirectory() as tmpdir:
+            # Allow temp directory for testing
+            os.environ["MAESTRO_ALLOWED_FILE_PATHS"] = tmpdir
+
             test_file = Path(tmpdir) / "test.md"
             test_file.write_text("# Test Markdown\n\nContent here.")
 
@@ -115,13 +122,14 @@ class TestDocumentIngestionIntegration:
 
             # Mock embedding function
             with patch.object(
-                db, "_get_embedding_function", return_value=lambda x: [[0.1] * 768]
+                db, "_generate_embedding_async", return_value=[0.1] * 768
             ):
                 await db.write_documents(documents, embedding="custom_local")
 
             # Verify metadata was enriched
             call_args = mock_client_instance.insert.call_args
-            inserted_data = call_args[1]["data"]
+            # insert is called as: insert(collection_name, data)
+            inserted_data = call_args[0][1]  # Second positional argument
 
             # Check that metadata includes both custom and fetch metadata
             metadata_str = inserted_data[0]["metadata"]
@@ -194,9 +202,7 @@ class TestDocumentIngestionIntegration:
         documents = [{"url": "file:///etc/passwd", "metadata": {}}]
 
         # Mock embedding function
-        with patch.object(
-            db, "_get_embedding_function", return_value=lambda x: [[0.1] * 768]
-        ):
+        with patch.object(db, "_generate_embedding_async", return_value=[0.1] * 768):
             # Should not raise error, but should skip the document
             await db.write_documents(documents, embedding="custom_local")
 
@@ -215,6 +221,9 @@ class TestDocumentIngestionIntegration:
 
         # Create temp file
         with tempfile.TemporaryDirectory() as tmpdir:
+            # Allow temp directory for testing
+            os.environ["MAESTRO_ALLOWED_FILE_PATHS"] = tmpdir
+
             test_file = Path(tmpdir) / "test.txt"
             test_file.write_text("File content")
 
@@ -229,14 +238,15 @@ class TestDocumentIngestionIntegration:
 
             # Mock embedding function
             with patch.object(
-                db, "_get_embedding_function", return_value=lambda x: [[0.1] * 768]
+                db, "_generate_embedding_async", return_value=[0.1] * 768
             ):
                 await db.write_documents(documents, embedding="custom_local")
 
             # Verify both documents were processed
             assert mock_client_instance.insert.called
             call_args = mock_client_instance.insert.call_args
-            inserted_data = call_args[1]["data"]
+            # insert is called as: insert(collection_name, data)
+            inserted_data = call_args[0][1]  # Second positional argument
 
             # Should have chunks from both documents
             assert len(inserted_data) >= 2

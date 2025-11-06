@@ -570,18 +570,17 @@ class MilvusVectorDatabase(VectorDatabase):
     async def get_document_chunks(
         self, doc_id: str, collection_name: str = None
     ) -> list[dict[str, Any]]:
-        """Retrieve all chunks for a specific document (by doc_name or URL)."""
+        """Retrieve all chunks for a specific document by doc_name."""
         self._ensure_client()
         if self.client is None:
             raise ValueError("Milvus client is not available")
 
         target_collection = collection_name or self.collection_name
         try:
-            # Query for all records with matching URL (since metadata is stored as JSON string)
-            # Note: doc_id is typically the URL of the document
+            # Query for all records with matching doc_name in metadata
             results = await self.client.query(
                 target_collection,
-                filter=f'url == "{doc_id}"',
+                filter=f'metadata["doc_name"] == "{doc_id}"',
                 output_fields=["id", "url", "text", "metadata"],
                 # Retrieve a reasonable upper bound of chunks to allow reassembly
                 limit=10000,
