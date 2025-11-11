@@ -395,202 +395,6 @@ def get_database_by_name(db_name: str) -> VectorDatabase:
 
 
 # Pydantic models for tool inputs
-class CreateVectorDatabaseInput(BaseModel):
-    db_name: str = Field(
-        ..., description="Unique name for the vector database instance"
-    )
-    db_type: str = Field(
-        ...,
-        description="Type of vector database to create",
-        json_schema_extra={"enum": ["weaviate", "milvus"]},
-    )
-    collection_name: str = Field(
-        default="MaestroDocs", description="Name of the collection to use"
-    )
-
-
-class SetupDatabaseInput(BaseModel):
-    db_name: str = Field(
-        ..., description="Name of the vector database instance to set up"
-    )
-    embedding: str = Field(
-        default="default", description="Embedding model to use for the collection"
-    )
-
-
-class GetSupportedEmbeddingsInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-
-
-class WriteDocumentsInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-    documents: list[dict[str, Any]] = Field(
-        ...,
-        description=(
-            "List of documents to write. Each document is a dict with:\n"
-            "- 'url' (required): Document identifier or URL to fetch from\n"
-            "- 'text' (optional): Direct text content (backwards compatible)\n"
-            "- 'metadata' (optional): Additional metadata dict\n\n"
-            "URL Fetching: If 'url' starts with http:// or https://, the system will:\n"
-            "1. Fetch the content from the URL\n"
-            "2. Auto-detect format (HTML, PDF, Markdown, Text)\n"
-            "3. Convert to plain text\n"
-            "4. Enrich metadata with fetch details\n\n"
-            "Supported formats: HTML (converted via html2text), PDF (requires PyPDF2), "
-            "Markdown (.md), Plain text (.txt)\n\n"
-            "Security: Only HTTP/HTTPS URLs allowed. File paths (file://) restricted to "
-            "current working directory and subdirectories.\n\n"
-            "Backwards Compatible: Providing 'text' directly still works. If both 'url' and 'text' "
-            "are provided, 'text' takes precedence (no fetching occurs)."
-        ),
-    )
-    # TODO(deprecate): embedding at write-time is deprecated and ignored; embedding is per-collection
-    embedding: str = Field(
-        default="default",
-        description="(DEPRECATED) Embedding strategy to use; ignored at write time",
-    )
-
-
-class WriteDocumentInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-    url: str = Field(..., description="URL of the document")
-    text: str = Field(..., description="Text content of the document")
-    metadata: dict[str, Any] = Field(
-        default_factory=dict, description="Additional metadata for the document"
-    )
-    vector: list[float] | None = Field(
-        default=None,
-        description="Pre-computed vector embedding (optional, for Milvus)",
-    )
-    # TODO(deprecate): embedding at write-time is deprecated and ignored; embedding is per-collection
-    embedding: str = Field(
-        default="default",
-        description="(DEPRECATED) Embedding strategy to use; ignored at write time",
-    )
-
-
-class WriteDocumentToCollectionInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-    collection_name: str = Field(..., description="Name of the collection to write to")
-    doc_name: str = Field(..., description="Name of the document")
-    text: str = Field(..., description="Text content of the document")
-    url: str = Field(..., description="URL of the document")
-    metadata: dict[str, Any] = Field(
-        default_factory=dict, description="Additional metadata for the document"
-    )
-    vector: list[float] | None = Field(
-        default=None,
-        description="Pre-computed vector embedding (optional, for Milvus)",
-    )
-    # TODO(deprecate): embedding at write-time is deprecated and ignored; embedding is per-collection
-    embedding: str = Field(
-        default="default",
-        description="(DEPRECATED) Embedding strategy to use; ignored at write time",
-    )
-
-
-class ListDocumentsInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-    limit: int = Field(default=10, description="Maximum number of documents to return")
-    offset: int = Field(default=0, description="Number of documents to skip")
-
-
-class ListDocumentsInCollectionInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-    collection_name: str = Field(
-        ..., description="Name of the collection to list documents from"
-    )
-    limit: int = Field(default=10, description="Maximum number of documents to return")
-    offset: int = Field(default=0, description="Number of documents to skip")
-
-
-class CountDocumentsInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-
-
-class DeleteDocumentsInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-    document_ids: list[str] = Field(..., description="List of document IDs to delete")
-
-
-class DeleteDocumentInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-    document_id: str = Field(..., description="Document ID to delete")
-
-
-class DeleteDocumentFromCollectionInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-    collection_name: str = Field(
-        ..., description="Name of the collection containing the document"
-    )
-    doc_name: str = Field(..., description="Name of the document to delete")
-
-
-class GetDocumentInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-    collection_name: str = Field(
-        ..., description="Name of the collection containing the document"
-    )
-    doc_name: str = Field(..., description="Name of the document to retrieve")
-
-
-class DeleteCollectionInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-    collection_name: str | None = Field(
-        default=None, description="Name of the collection to delete"
-    )
-
-
-class CleanupInput(BaseModel):
-    db_name: str = Field(
-        ..., description="Name of the vector database instance to clean up"
-    )
-
-
-class GetDatabaseInfoInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-
-
-class ListCollectionsInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-
-
-class GetCollectionInfoInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-    collection_name: str | None = Field(
-        default=None,
-        description="Name of the collection to get info for. If not provided, uses the default collection.",
-    )
-
-
-class CreateCollectionInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-    collection_name: str = Field(..., description="Name of the collection to create")
-    embedding: str = Field(
-        default="default", description="Embedding model to use for the collection"
-    )
-    chunking_config: dict[str, Any] | None = Field(
-        default=None,
-        description="Optional chunking configuration for the collection. Example: {'strategy':'Sentence','parameters':{'chunk_size':256,'overlap':1}}",
-    )
-
-
-class QueryInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-    query: str = Field(..., description="The query string to search for")
-    limit: int = Field(default=5, description="Maximum number of results to consider")
-    collection_name: str | None = Field(
-        default=None, description="Optional collection name to search in"
-    )
-
-
-class SearchInput(BaseModel):
-    db_name: str = Field(..., description="Name of the vector database instance")
-    query: str = Field(..., description="The query string to search for")
-    limit: int = Field(default=5, description="Maximum number of results to consider")
-    collection_name: str | None = Field(
-        default=None, description="Optional collection name to search in"
-    )
 
 
 async def create_mcp_server() -> FastMCP:
@@ -651,42 +455,59 @@ async def create_mcp_server() -> FastMCP:
         )
 
     @app.tool()
-    async def create_vector_database_tool(input: CreateVectorDatabaseInput) -> str:
+    async def create_vector_database_tool(
+        database: str = Field(
+            ..., description="Unique name for the vector database instance"
+        ),
+        database_type: str = Field(
+            ...,
+            description="Type of vector database to create",
+            json_schema_extra={"enum": ["weaviate", "milvus"]},
+        ),
+        collection: str = Field(
+            default="MaestroDocs", description="Name of the collection to use"
+        ),
+    ) -> str:
         """Create a new vector database instance."""
         try:
-            logger.info(
-                f"Creating vector database: {input.db_name} of type {input.db_type}"
-            )
+            logger.info(f"Creating vector database: {database} of type {database_type}")
             logger.info(
                 f"Current vector_databases keys: {list(vector_databases.keys())}"
             )
 
             # Check if database with this name already exists
-            if input.db_name in vector_databases:
-                error_msg = f"Vector database '{input.db_name}' already exists"
+            if database in vector_databases:
+                error_msg = f"Vector database '{database}' already exists"
                 logger.error(error_msg)
                 return f"Error: {error_msg}"
 
             # Create new database instance
-            vector_databases[input.db_name] = create_vector_database(
-                input.db_type, input.collection_name
+            vector_databases[database] = create_vector_database(
+                database_type, collection
             )
 
             logger.info(
                 f"Created database. Updated vector_databases keys: {list(vector_databases.keys())}"
             )
 
-            return f"Successfully created {input.db_type} vector database '{input.db_name}' with collection '{input.collection_name}'"
+            return f"Successfully created {database_type} vector database '{database}' with collection '{collection}'"
         except Exception as e:
-            error_msg = f"Failed to create vector database '{input.db_name}': {str(e)}"
+            error_msg = f"Failed to create vector database '{database}': {str(e)}"
             logger.error(error_msg)
             return f"Error: {error_msg}"
 
     @app.tool()
-    async def setup_database(input: SetupDatabaseInput) -> str:
+    async def setup_database(
+        database: str = Field(
+            ..., description="Name of the vector database instance to set up"
+        ),
+        embedding: str = Field(
+            default="default", description="Embedding model to use for the collection"
+        ),
+    ) -> str:
         """Set up a vector database and create collections."""
         try:
-            db = get_database_by_name(input.db_name)
+            db = get_database_by_name(database)
 
             # Check if the database supports the setup method with embedding parameter
             if hasattr(db, "setup"):
@@ -694,13 +515,13 @@ async def create_mcp_server() -> FastMCP:
                 param_count = len(db.setup.__code__.co_varnames)
                 if param_count > 2:  # self, embedding, collection_name
                     ok, res = await run_with_timeout(
-                        db.setup(embedding=input.embedding),
+                        db.setup(embedding=embedding),
                         "setup_database",
                         get_timeout("setup_database"),
                     )
                 elif param_count > 1:  # self, embedding
                     ok, res = await run_with_timeout(
-                        db.setup(embedding=input.embedding),
+                        db.setup(embedding=embedding),
                         "setup_database",
                         get_timeout("setup_database"),
                     )
@@ -711,19 +532,21 @@ async def create_mcp_server() -> FastMCP:
                 if not ok:
                     return str(res)
 
-            return f"Successfully set up {db.db_type} vector database '{input.db_name}' with embedding '{input.embedding}'"
+            return f"Successfully set up {db.db_type} vector database '{database}' with embedding '{embedding}'"
         except Exception as e:
-            error_msg = f"Failed to set up vector database '{input.db_name}': {str(e)}"
+            error_msg = f"Failed to set up vector database '{database}': {str(e)}"
             logger.error(error_msg)
             return f"Error: {error_msg}"
 
     @app.tool()
-    async def get_supported_embeddings(input: GetSupportedEmbeddingsInput) -> str:
+    async def get_supported_embeddings(
+        database: str = Field(..., description="Name of the vector database instance"),
+    ) -> str:
         """Get list of supported embedding models for a vector database."""
-        db = get_database_by_name(input.db_name)
+        db = get_database_by_name(database)
         embeddings = db.supported_embeddings()
 
-        return f"Supported embeddings for {db.db_type} vector database '{input.db_name}': {json.dumps(embeddings, indent=2)}"
+        return f"Supported embeddings for {db.db_type} vector database '{database}': {json.dumps(embeddings, indent=2)}"
 
     @app.tool()
     async def get_supported_chunking_strategies() -> str:
@@ -782,7 +605,33 @@ async def create_mcp_server() -> FastMCP:
         )
 
     @app.tool()
-    async def write_documents(input: WriteDocumentsInput) -> str:
+    async def write_documents(
+        database: str = Field(..., description="Name of the vector database instance"),
+        documents: list[dict[str, Any]] = Field(
+            ...,
+            description=(
+                "List of documents to write. Each document is a dict with:\n"
+                "- 'url' (required): Document identifier or URL to fetch from\n"
+                "- 'text' (optional): Direct text content (backwards compatible)\n"
+                "- 'metadata' (optional): Additional metadata dict\n\n"
+                "URL Fetching: If 'url' starts with http:// or https://, the system will:\n"
+                "1. Fetch the content from the URL\n"
+                "2. Auto-detect format (HTML, PDF, Markdown, Text)\n"
+                "3. Convert to plain text\n"
+                "4. Enrich metadata with fetch details\n\n"
+                "Supported formats: HTML (converted via html2text), PDF (requires PyPDF2), "
+                "Markdown (.md), Plain text (.txt)\n\n"
+                "Security: Only HTTP/HTTPS URLs allowed. File paths (file://) restricted to "
+                "current working directory and subdirectories.\n\n"
+                "Backwards Compatible: Providing 'text' directly still works. If both 'url' and 'text' "
+                "are provided, 'text' takes precedence (no fetching occurs)."
+            ),
+        ),
+        embedding: str = Field(
+            default="default",
+            description="(DEPRECATED) Embedding strategy to use; ignored at write time",
+        ),
+    ) -> str:
         """
         Write documents to a vector database with automatic URL fetching and format conversion.
 
@@ -831,9 +680,9 @@ async def create_mcp_server() -> FastMCP:
 
         Note: Embedding at write-time is deprecated; collection-level embedding is used.
         """
-        db = get_database_by_name(input.db_name)
+        db = get_database_by_name(database)
         # Deprecation: ignore per-document embedding; use collection embedding
-        if input.embedding and input.embedding != "default":
+        if embedding and embedding != "default":
             logger.warning(
                 "Deprecation: embedding specified at write_documents is ignored; embedding is configured per collection."
             )
@@ -854,7 +703,7 @@ async def create_mcp_server() -> FastMCP:
         stats: Any = None
         try:
             ok, stats_any = await run_with_timeout(
-                db.write_documents(input.documents, embedding=collection_embedding),
+                db.write_documents(documents, embedding=collection_embedding),
                 "write_documents",
                 get_timeout("write_bulk"),
             )
@@ -886,7 +735,7 @@ async def create_mcp_server() -> FastMCP:
         sample_query = "What is this collection about?"
         try:
             # Take first non-empty document text and use first few words as query
-            for d in input.documents:
+            for d in documents:
                 t = (d or {}).get("text") or ""
                 if t:
                     words = t.strip().split()
@@ -898,7 +747,7 @@ async def create_mcp_server() -> FastMCP:
 
         result = {
             "status": "ok",
-            "message": f"Wrote {len(input.documents)} document(s)",
+            "message": f"Wrote {len(documents)} document(s)",
             "write_stats": stats,
             "collection_info": post_info,
             "sample_query_suggestion": {
@@ -910,7 +759,22 @@ async def create_mcp_server() -> FastMCP:
         return json.dumps(result, indent=2, default=str)
 
     @app.tool()
-    async def write_document(input: WriteDocumentInput) -> str:
+    async def write_document(
+        database: str = Field(..., description="Name of the vector database instance"),
+        url: str = Field(..., description="URL of the document"),
+        text: str = Field(..., description="Text content of the document"),
+        metadata: dict[str, Any] = Field(
+            default_factory=dict, description="Additional metadata for the document"
+        ),
+        vector: list[float] | None = Field(
+            default=None,
+            description="Pre-computed vector embedding (optional, for Milvus)",
+        ),
+        embedding: str = Field(
+            default="default",
+            description="(DEPRECATED) Embedding strategy to use; ignored at write time",
+        ),
+    ) -> str:
         """
         Write a single document to a vector database with automatic URL fetching and format conversion.
 
@@ -918,7 +782,7 @@ async def create_mcp_server() -> FastMCP:
         Supports the same URL fetching and format conversion features.
 
         Parameters:
-        - db_name: Name of the vector database instance
+        - database: Name of the vector database instance
         - url: Document identifier or URL to fetch from (http://, https://, or file://)
         - text: Direct text content (if provided, no URL fetching occurs)
         - metadata: Additional metadata dict (optional)
@@ -936,19 +800,19 @@ async def create_mcp_server() -> FastMCP:
         Note: For batch operations, use write_documents instead for better performance.
         Embedding is configured per-collection, not per-document.
         """
-        db = get_database_by_name(input.db_name)
+        db = get_database_by_name(database)
         document: dict[str, Any] = {
-            "url": input.url,
-            "text": input.text,
-            "metadata": input.metadata,
+            "url": url,
+            "text": text,
+            "metadata": metadata,
         }
 
         # Add vector if provided (for Milvus)
-        if input.vector is not None:
-            document["vector"] = input.vector
+        if vector is not None:
+            document["vector"] = vector
 
         # Deprecation: ignore per-document embedding; use collection embedding
-        if input.embedding and input.embedding != "default":
+        if embedding and embedding != "default":
             logger.warning(
                 "Deprecation: embedding specified at write_document is ignored; embedding is configured per collection."
             )
@@ -994,7 +858,7 @@ async def create_mcp_server() -> FastMCP:
         except Exception:
             post_info = None
         sample_query = (
-            " ".join(((input.text or "").strip().split())[:8]) or "What is this about?"
+            " ".join(((text or "").strip().split())[:8]) or "What is this about?"
         )
         return json.dumps(
             {
@@ -1014,10 +878,25 @@ async def create_mcp_server() -> FastMCP:
 
     @app.tool()
     async def write_document_to_collection(
-        input: WriteDocumentToCollectionInput,
+        database: str = Field(..., description="Name of the vector database instance"),
+        collection: str = Field(..., description="Name of the collection to write to"),
+        document_name: str = Field(..., description="Name of the document"),
+        text: str = Field(..., description="Text content of the document"),
+        url: str = Field(..., description="URL of the document"),
+        metadata: dict[str, Any] = Field(
+            default_factory=dict, description="Additional metadata for the document"
+        ),
+        vector: list[float] | None = Field(
+            default=None,
+            description="Pre-computed vector embedding (optional, for Milvus)",
+        ),
+        embedding: str = Field(
+            default="default",
+            description="(DEPRECATED) Embedding strategy to use; ignored at write time",
+        ),
     ) -> str:
         """Write a single document to a specific collection. Embedding at write-time is deprecated; collection embedding is used. Returns JSON with stats and collection info."""
-        db = get_database_by_name(input.db_name)
+        db = get_database_by_name(database)
 
         # Check if the collection exists
         ok, collections_any = await run_with_timeout(
@@ -1028,35 +907,35 @@ async def create_mcp_server() -> FastMCP:
             if ok and isinstance(collections_any, list)
             else []
         )
-        if input.collection_name not in collections:
+        if collection not in collections:
             raise ValueError(
-                f"Collection '{input.collection_name}' not found in vector database '{input.db_name}'"
+                f"Collection '{collection}' not found in vector database '{database}'"
             )
 
         # Create document with collection-specific metadata
         document: dict[str, Any] = {
-            "url": input.url,
-            "text": input.text,
+            "url": url,
+            "text": text,
             "metadata": {
-                **input.metadata,
-                "collection_name": input.collection_name,
-                "doc_name": input.doc_name,
+                **metadata,
+                "collection_name": collection,
+                "doc_name": document_name,
             },
         }
 
         # Add vector if provided (for Milvus)
-        if input.vector is not None:
-            document["vector"] = input.vector
+        if vector is not None:
+            document["vector"] = vector
 
         # Deprecation: ignore per-document embedding; use target collection embedding
-        if input.embedding and input.embedding != "default":
+        if embedding and embedding != "default":
             logger.warning(
                 "Deprecation: embedding specified at write_document_to_collection is ignored; embedding is configured per collection."
             )
         collection_embedding = "default"
         try:
             ok, info_any = await run_with_timeout(
-                db.get_collection_info(input.collection_name),
+                db.get_collection_info(collection),
                 "get_collection_info",
                 get_timeout("get_collection_info"),
             )
@@ -1073,7 +952,7 @@ async def create_mcp_server() -> FastMCP:
         try:
             ok, stats = await run_with_timeout(
                 db.write_documents_to_collection(
-                    [document], input.collection_name, embedding=collection_embedding
+                    [document], collection, embedding=collection_embedding
                 ),
                 "write_document_to_collection",
                 get_timeout("write_single"),
@@ -1092,22 +971,22 @@ async def create_mcp_server() -> FastMCP:
         # Post-write info and suggestion
         post_info = None
         try:
-            post_info = await db.get_collection_info(input.collection_name)
+            post_info = await db.get_collection_info(collection)
         except Exception:
             post_info = None
         sample_query = (
-            " ".join(((input.text or "").strip().split())[:8]) or "What is this about?"
+            " ".join(((text or "").strip().split())[:8]) or "What is this about?"
         )
         return json.dumps(
             {
                 "status": "ok",
-                "message": f"Wrote 1 document to collection '{input.collection_name}'",
+                "message": f"Wrote 1 document to collection '{collection}'",
                 "write_stats": stats,
                 "collection_info": post_info,
                 "sample_query_suggestion": {
                     "query": sample_query,
                     "limit": 3,
-                    "collection": input.collection_name,
+                    "collection": collection,
                 },
             },
             indent=2,
@@ -1115,11 +994,17 @@ async def create_mcp_server() -> FastMCP:
         )
 
     @app.tool()
-    async def list_documents(input: ListDocumentsInput) -> str:
+    async def list_documents(
+        database: str = Field(..., description="Name of the vector database instance"),
+        limit: int = Field(
+            default=10, description="Maximum number of documents to return"
+        ),
+        offset: int = Field(default=0, description="Number of documents to skip"),
+    ) -> str:
         """List documents from a vector database."""
-        db = get_database_by_name(input.db_name)
+        db = get_database_by_name(database)
         ok, documents_any = await run_with_timeout(
-            db.list_documents(input.limit, input.offset),
+            db.list_documents(limit, offset),
             "list_documents",
             get_timeout("list_documents"),
         )
@@ -1129,14 +1014,21 @@ async def create_mcp_server() -> FastMCP:
             else []
         )
 
-        return f"Found {len(documents)} documents in vector database '{input.db_name}':\n{json.dumps(documents, indent=2, default=str)}"
+        return f"Found {len(documents)} documents in vector database '{database}':\n{json.dumps(documents, indent=2, default=str)}"
 
     @app.tool()
     async def list_documents_in_collection(
-        input: ListDocumentsInCollectionInput,
+        database: str = Field(..., description="Name of the vector database instance"),
+        collection: str = Field(
+            ..., description="Name of the collection to list documents from"
+        ),
+        limit: int = Field(
+            default=10, description="Maximum number of documents to return"
+        ),
+        offset: int = Field(default=0, description="Number of documents to skip"),
     ) -> str:
         """List documents from a specific collection in a vector database."""
-        db = get_database_by_name(input.db_name)
+        db = get_database_by_name(database)
 
         # Check if the collection exists
         ok, collections_any = await run_with_timeout(
@@ -1148,16 +1040,14 @@ async def create_mcp_server() -> FastMCP:
             else []
         )
         # Use case-sensitive comparison
-        if input.collection_name not in collections:
+        if collection not in collections:
             raise ValueError(
-                f"Collection '{input.collection_name}' not found in vector database '{input.db_name}'"
+                f"Collection '{collection}' not found in vector database '{database}'"
             )
 
         # Use the new list_documents_in_collection method
         ok, documents_any = await run_with_timeout(
-            db.list_documents_in_collection(
-                input.collection_name, input.limit, input.offset
-            ),
+            db.list_documents_in_collection(collection, limit, offset),
             "list_documents",
             get_timeout("list_documents"),
         )
@@ -1166,49 +1056,63 @@ async def create_mcp_server() -> FastMCP:
             if ok and isinstance(documents_any, list)
             else []
         )
-        return f"Found {len(documents)} documents in collection '{input.collection_name}' of vector database '{input.db_name}':\n{json.dumps(documents, indent=2, default=str)}"
+        return f"Found {len(documents)} documents in collection '{collection}' of vector database '{database}':\n{json.dumps(documents, indent=2, default=str)}"
 
     @app.tool()
-    async def count_documents(input: CountDocumentsInput) -> str:
+    async def count_documents(
+        database: str = Field(..., description="Name of the vector database instance"),
+    ) -> str:
         """Get the current count of documents in a collection."""
-        db = get_database_by_name(input.db_name)
+        db = get_database_by_name(database)
         ok, count_any = await run_with_timeout(
             db.count_documents(), "count_documents", get_timeout("count_documents")
         )
         count: int = int(count_any) if ok else -1
 
-        return f"Document count in vector database '{input.db_name}': {count}"
+        return f"Document count in vector database '{database}': {count}"
 
     @app.tool()
-    async def delete_documents(input: DeleteDocumentsInput) -> str:
+    async def delete_documents(
+        database: str = Field(..., description="Name of the vector database instance"),
+        document_ids: list[str] = Field(
+            ..., description="List of document IDs to delete"
+        ),
+    ) -> str:
         """Delete documents from a vector database by their IDs."""
-        db = get_database_by_name(input.db_name)
+        db = get_database_by_name(database)
         ok, _ = await run_with_timeout(
-            db.delete_documents(input.document_ids), "delete", get_timeout("delete")
+            db.delete_documents(document_ids), "delete", get_timeout("delete")
         )
         if not ok:
-            return f"Error: Failed to delete documents in vector database '{input.db_name}'"
+            return f"Error: Failed to delete documents in vector database '{database}'"
 
-        return f"Successfully deleted {len(input.document_ids)} documents from vector database '{input.db_name}'"
+        return f"Successfully deleted {len(document_ids)} documents from vector database '{database}'"
 
     @app.tool()
-    async def delete_document(input: DeleteDocumentInput) -> str:
+    async def delete_document(
+        database: str = Field(..., description="Name of the vector database instance"),
+        document_id: str = Field(..., description="Document ID to delete"),
+    ) -> str:
         """Delete a single document from a vector database."""
-        db = get_database_by_name(input.db_name)
+        db = get_database_by_name(database)
         ok, _ = await run_with_timeout(
-            db.delete_document(input.document_id), "delete", get_timeout("delete")
+            db.delete_document(document_id), "delete", get_timeout("delete")
         )
         if not ok:
-            return f"Error: Failed to delete document '{input.document_id}' from vector database '{input.db_name}'"
+            return f"Error: Failed to delete document '{document_id}' from vector database '{database}'"
 
-        return f"Successfully deleted document '{input.document_id}' from vector database '{input.db_name}'"
+        return f"Successfully deleted document '{document_id}' from vector database '{database}'"
 
     @app.tool()
     async def delete_document_from_collection(
-        input: DeleteDocumentFromCollectionInput,
+        database: str = Field(..., description="Name of the vector database instance"),
+        collection: str = Field(
+            ..., description="Name of the collection containing the document"
+        ),
+        document_name: str = Field(..., description="Name of the document to delete"),
     ) -> str:
         """Delete a document from a specific collection in a vector database by document name."""
-        db = get_database_by_name(input.db_name)
+        db = get_database_by_name(database)
 
         # Check if the collection exists
         ok, collections_any = await run_with_timeout(
@@ -1219,14 +1123,14 @@ async def create_mcp_server() -> FastMCP:
             if ok and isinstance(collections_any, list)
             else []
         )
-        if input.collection_name not in collections:
+        if collection not in collections:
             raise ValueError(
-                f"Collection '{input.collection_name}' not found in vector database '{input.db_name}'"
+                f"Collection '{collection}' not found in vector database '{database}'"
             )
 
         # Temporarily switch to the target collection
         original_collection = db.collection_name
-        db.collection_name = input.collection_name
+        db.collection_name = collection
 
         try:
             # List documents to find the one with the matching name
@@ -1243,13 +1147,13 @@ async def create_mcp_server() -> FastMCP:
             document_id = None
 
             for doc in documents:
-                if doc.get("metadata", {}).get("doc_name") == input.doc_name:
+                if doc.get("metadata", {}).get("doc_name") == document_name:
                     document_id = doc.get("id")
                     break
 
             if document_id is None:
                 raise ValueError(
-                    f"Document '{input.doc_name}' not found in collection '{input.collection_name}' of vector database '{input.db_name}'"
+                    f"Document '{document_name}' not found in collection '{collection}' of vector database '{database}'"
                 )
 
             # Delete the document
@@ -1257,17 +1161,23 @@ async def create_mcp_server() -> FastMCP:
                 db.delete_document(document_id), "delete", get_timeout("delete")
             )
             if not ok:
-                return f"Error: Failed to delete document '{input.doc_name}' from collection '{input.collection_name}'"
+                return f"Error: Failed to delete document '{document_name}' from collection '{collection}'"
 
-            return f"Successfully deleted document '{input.doc_name}' from collection '{input.collection_name}' in vector database '{input.db_name}'"
+            return f"Successfully deleted document '{document_name}' from collection '{collection}' in vector database '{database}'"
         finally:
             # Restore original collection
             db.collection_name = original_collection
 
     @app.tool()
-    async def get_document(input: GetDocumentInput) -> str:
+    async def get_document(
+        database: str = Field(..., description="Name of the vector database instance"),
+        collection: str = Field(
+            ..., description="Name of the collection containing the document"
+        ),
+        document_name: str = Field(..., description="Name of the document to retrieve"),
+    ) -> str:
         """Get a specific document by name from a collection in a vector database."""
-        db = get_database_by_name(input.db_name)
+        db = get_database_by_name(database)
 
         # Check if the collection exists
         ok, collections_any = await run_with_timeout(
@@ -1278,33 +1188,38 @@ async def create_mcp_server() -> FastMCP:
             if ok and isinstance(collections_any, list)
             else []
         )
-        if input.collection_name not in collections:
+        if collection not in collections:
             raise ValueError(
-                f"Collection '{input.collection_name}' not found in vector database '{input.db_name}'"
+                f"Collection '{collection}' not found in vector database '{database}'"
             )
 
         try:
             # Get the document using the new get_document method
             ok, document_any = await run_with_timeout(
-                db.get_document(input.doc_name, input.collection_name),
+                db.get_document(document_name, collection),
                 "get_document",
                 get_timeout("list_documents"),
             )
             if not ok:
                 return str(document_any)
             document: dict[str, Any] = cast("dict[str, Any]", document_any)
-            return f"Document '{input.doc_name}' from collection '{input.collection_name}' in vector database '{input.db_name}':\n{json.dumps(document, indent=2, default=str)}"
+            return f"Document '{document_name}' from collection '{collection}' in vector database '{database}':\n{json.dumps(document, indent=2, default=str)}"
         except ValueError as e:
             # Re-raise ValueError as is (these are user-friendly error messages)
             raise e
         except Exception as e:
-            raise ValueError(f"Failed to retrieve document '{input.doc_name}': {e}")
+            raise ValueError(f"Failed to retrieve document '{document_name}': {e}")
 
     @app.tool()
-    async def delete_collection(input: DeleteCollectionInput) -> str:
+    async def delete_collection(
+        database: str = Field(..., description="Name of the vector database instance"),
+        collection: str | None = Field(
+            default=None, description="Name of the collection to delete"
+        ),
+    ) -> str:
         """Delete an entire collection from a vector database."""
-        if input.db_name in vector_databases:
-            db = get_database_by_name(input.db_name)
+        if database in vector_databases:
+            db = get_database_by_name(database)
 
             # Check if the collection exists
             ok, colls_any = await run_with_timeout(
@@ -1317,93 +1232,96 @@ async def create_mcp_server() -> FastMCP:
                 if ok and isinstance(colls_any, list)
                 else []
             )
-            if (
-                input.collection_name is None
-                or input.collection_name not in collections
-            ):
+            if collection is None or collection not in collections:
                 raise ValueError(
-                    f"Collection '{input.collection_name}' not found in vector database '{input.db_name}'"
+                    f"Collection '{collection}' not found in vector database '{database}'"
                 )
             ok, _ = await run_with_timeout(
-                db.delete_collection(input.collection_name),
+                db.delete_collection(collection),
                 "delete",
                 get_timeout("delete"),
             )
             if not ok:
-                return f"Error: Failed to delete collection '{input.collection_name}' from vector database '{input.db_name}'"
+                return f"Error: Failed to delete collection '{collection}' from vector database '{database}'"
 
-            return f"Successfully deleted collection '{input.collection_name}' from vector database '{input.db_name}'"
+            return f"Successfully deleted collection '{collection}' from vector database '{database}'"
         try:
             from src.db.vector_db_milvus import MilvusVectorDatabase
 
-            if input.collection_name is None:
+            if collection is None:
                 raise ValueError(
                     "collection_name must be provided to delete a collection"
                 )
-            temp_db = MilvusVectorDatabase(collection_name=input.collection_name)
+            temp_db = MilvusVectorDatabase(collection_name=collection)
             ok, _ = await run_with_timeout(
-                temp_db.delete_collection(input.collection_name),
+                temp_db.delete_collection(collection),
                 "delete",
                 get_timeout("delete"),
             )
             if not ok:
-                return f"Error: Failed to delete collection '{input.collection_name}' from Milvus (untracked)."
-            return f"Successfully dropped collection '{input.collection_name}' from Milvus (untracked)."
+                return f"Error: Failed to delete collection '{collection}' from Milvus (untracked)."
+            return f"Successfully dropped collection '{collection}' from Milvus (untracked)."
         except Exception as e:
             return f"Delete collection failed: {str(e)}"
 
     @app.tool()
-    async def cleanup(input: CleanupInput) -> str:
+    async def cleanup(
+        database: str = Field(
+            ..., description="Name of the vector database instance to clean up"
+        ),
+    ) -> str:
         """Clean up resources and close connections for a vector database."""
-        if input.db_name in vector_databases:
-            db = get_database_by_name(input.db_name)
+        if database in vector_databases:
+            db = get_database_by_name(database)
             ok, _ = await run_with_timeout(
                 db.cleanup(), "cleanup", get_timeout("cleanup")
             )
             if not ok:
-                return f"Error: Failed to cleanup vector database '{input.db_name}'"
-            del vector_databases[input.db_name]
-            return (
-                f"Successfully cleaned up and removed vector database '{input.db_name}'"
-            )
+                return f"Error: Failed to cleanup vector database '{database}'"
+            del vector_databases[database]
+            return f"Successfully cleaned up and removed vector database '{database}'"
         try:
             from src.db.vector_db_milvus import MilvusVectorDatabase
 
-            temp_db = MilvusVectorDatabase(collection_name=input.db_name)
+            temp_db = MilvusVectorDatabase(collection_name=database)
             ok, _ = await run_with_timeout(
-                temp_db.delete_collection(input.db_name),
+                temp_db.delete_collection(database),
                 "cleanup",
                 get_timeout("cleanup"),
             )
             if not ok:
-                return f"Error: Failed to cleanup (drop) collection '{input.db_name}' from Milvus (untracked)."
-            return f"Successfully dropped collection '{input.db_name}' from Milvus (untracked)."
+                return f"Error: Failed to cleanup (drop) collection '{database}' from Milvus (untracked)."
+            return (
+                f"Successfully dropped collection '{database}' from Milvus (untracked)."
+            )
         except Exception as e:
             return f"Cleanup failed: {str(e)}"
 
     @app.tool()
-    async def get_database_info(input: GetDatabaseInfoInput) -> str:
+    async def get_database_info(
+        database: str = Field(..., description="Name of the vector database instance"),
+    ) -> str:
         """Get information about a vector database."""
-        db = get_database_by_name(input.db_name)
+        db = get_database_by_name(database)
         ok, cnt_any = await run_with_timeout(
             db.count_documents(), "count_documents", get_timeout("count_documents")
         )
         count = int(cnt_any) if ok else -1
         info = {
-            "name": input.db_name,
+            "name": database,
             "type": db.db_type,
             "collection": db.collection_name,
             "document_count": count,
         }
 
-        return (
-            f"Database information for '{input.db_name}':\n{json.dumps(info, indent=2)}"
-        )
+        return f"Database information for '{database}':\n{json.dumps(info, indent=2)}"
 
     @app.tool()
-    async def list_collections(input: ListCollectionsInput) -> str:
+    async def list_collections(
+        database: str = Field(..., description="Name of the vector database instance"),
+    ) -> str:
         """List all collections in a vector database."""
-        db = get_database_by_name(input.db_name)
+        db = get_database_by_name(database)
         ok, colls_any = await run_with_timeout(
             db.list_collections(), "list_collections", get_timeout("list_collections")
         )
@@ -1412,17 +1330,23 @@ async def create_mcp_server() -> FastMCP:
         )
 
         if not collections:
-            return f"No collections found in vector database '{input.db_name}'"
+            return f"No collections found in vector database '{database}'"
 
-        return f"Collections in vector database '{input.db_name}':\n{json.dumps(collections, indent=2)}"
+        return f"Collections in vector database '{database}':\n{json.dumps(collections, indent=2)}"
 
     @app.tool()
-    async def get_collection_info(input: GetCollectionInfoInput) -> str:
+    async def get_collection_info(
+        database: str = Field(..., description="Name of the vector database instance"),
+        collection: str | None = Field(
+            default=None,
+            description="Name of the collection to get info for. If not provided, uses the default collection.",
+        ),
+    ) -> str:
         """Get information about a collection in a vector database."""
-        db = get_database_by_name(input.db_name)
+        db = get_database_by_name(database)
         # Always delegate to the backend which can surface metadata even if
         # the collection doesn't exist (including chunking config and errors)
-        if input.collection_name is None:
+        if collection is None:
             ok, info_any = await run_with_timeout(
                 db.get_collection_info(),
                 "get_collection_info",
@@ -1430,7 +1354,7 @@ async def create_mcp_server() -> FastMCP:
             )
         else:
             ok, info_any = await run_with_timeout(
-                db.get_collection_info(input.collection_name),
+                db.get_collection_info(collection),
                 "get_collection_info",
                 get_timeout("get_collection_info"),
             )
@@ -1440,14 +1364,24 @@ async def create_mcp_server() -> FastMCP:
 
         return (
             f"Collection information for '{info.get('name')}' in vector database "
-            f"'{input.db_name}':\n{json.dumps(info, indent=2)}"
+            f"'{database}':\n{json.dumps(info, indent=2)}"
         )
 
     @app.tool()
-    async def create_collection(input: CreateCollectionInput) -> str:
+    async def create_collection(
+        database: str = Field(..., description="Name of the vector database instance"),
+        collection: str = Field(..., description="Name of the collection to create"),
+        embedding: str = Field(
+            default="default", description="Embedding model to use for the collection"
+        ),
+        chunking_config: dict[str, Any] | None = Field(
+            default=None,
+            description="Optional chunking configuration for the collection. Example: {'strategy':'Sentence','parameters':{'chunk_size':256,'overlap':1}}",
+        ),
+    ) -> str:
         """Create a new collection in a vector database."""
         try:
-            db = get_database_by_name(input.db_name)
+            db = get_database_by_name(database)
 
             # Check if collection already exists
             ok, existing_any = await run_with_timeout(
@@ -1460,12 +1394,12 @@ async def create_mcp_server() -> FastMCP:
                 if ok and isinstance(existing_any, list)
                 else []
             )
-            if input.collection_name in existing_collections:
-                return f"Error: Collection '{input.collection_name}' already exists in vector database '{input.db_name}'"
+            if collection in existing_collections:
+                return f"Error: Collection '{collection}' already exists in vector database '{database}'"
 
             # Temporarily switch to the new collection name
             original_collection = db.collection_name
-            db.collection_name = input.collection_name
+            db.collection_name = collection
 
             try:
                 # Create the collection using the setup method
@@ -1473,13 +1407,13 @@ async def create_mcp_server() -> FastMCP:
                     # Get the number of parameters in the setup method
                     param_count = len(db.setup.__code__.co_varnames)
                     # Try to call setup with embedding and chunking_config where supported
-                    if (param_count > 3) and (input.chunking_config is not None):
+                    if (param_count > 3) and (chunking_config is not None):
                         # self, embedding, collection_name, chunking_config
                         ok, res = await run_with_timeout(
                             db.setup(
-                                embedding=input.embedding,
-                                collection_name=input.collection_name,
-                                chunking_config=input.chunking_config,
+                                embedding=embedding,
+                                collection_name=collection,
+                                chunking_config=chunking_config,
                             ),
                             "create_collection",
                             get_timeout("create_collection"),
@@ -1487,15 +1421,15 @@ async def create_mcp_server() -> FastMCP:
                     elif param_count > 2:  # self, embedding, collection_name
                         ok, res = await run_with_timeout(
                             db.setup(
-                                embedding=input.embedding,
-                                collection_name=input.collection_name,
+                                embedding=embedding,
+                                collection_name=collection,
                             ),
                             "create_collection",
                             get_timeout("create_collection"),
                         )
                     elif param_count > 1:  # self, embedding
                         ok, res = await run_with_timeout(
-                            db.setup(embedding=input.embedding),
+                            db.setup(embedding=embedding),
                             "create_collection",
                             get_timeout("create_collection"),
                         )
@@ -1516,53 +1450,71 @@ async def create_mcp_server() -> FastMCP:
 
                 # NOTE: Embedding is configured per-collection at creation time.
                 # TODO(deprecate): Remove write-time embedding parameters from write tools in a future release.
-                return f"Successfully created collection '{input.collection_name}' in vector database '{input.db_name}' with embedding '{input.embedding}'"
+                return f"Successfully created collection '{collection}' in vector database '{database}' with embedding '{embedding}'"
             finally:
                 # Restore the original collection name
                 db.collection_name = original_collection
 
         except Exception as e:
-            error_msg = f"Failed to create collection '{input.collection_name}' in vector database '{input.db_name}': {str(e)}"
+            error_msg = f"Failed to create collection '{collection}' in vector database '{database}': {str(e)}"
             logger.error(error_msg)
             return f"Error: {error_msg}"
 
     @app.tool()
-    async def query(input: QueryInput) -> str:
+    async def query(
+        database: str = Field(..., description="Name of the vector database instance"),
+        query: str = Field(..., description="The query string to search for"),
+        limit: int = Field(
+            default=5, description="Maximum number of results to consider"
+        ),
+        collection: str | None = Field(
+            default=None, description="Optional collection name to search in"
+        ),
+    ) -> str:
         """Query a vector database using the default query agent."""
         try:
-            db = get_database_by_name(input.db_name)
-            kwargs: dict[str, Any] = {"limit": input.limit}
-            if input.collection_name is not None:
-                kwargs["collection_name"] = input.collection_name
+            db = get_database_by_name(database)
+            kwargs: dict[str, Any] = {"limit": limit}
+            if collection is not None:
+                kwargs["collection_name"] = collection
             ok, response = await run_with_timeout(
-                db.query(input.query, **kwargs), "query", get_timeout("query")
+                db.query(query, **kwargs), "query", get_timeout("query")
             )
             if not ok:
                 return str(response)
             # response is expected to be a string summary
             return str(response)
         except Exception as e:
-            error_msg = f"Failed to query vector database '{input.db_name}': {str(e)}"
+            error_msg = f"Failed to query vector database '{database}': {str(e)}"
             logger.error(error_msg)
             return f"Error: {error_msg}"
 
     @app.tool()
-    async def search(input: SearchInput) -> str:
+    async def search(
+        database: str = Field(..., description="Name of the vector database instance"),
+        query: str = Field(..., description="The query string to search for"),
+        limit: int = Field(
+            default=5, description="Maximum number of results to consider"
+        ),
+        collection: str | None = Field(
+            default=None, description="Optional collection name to search in"
+        ),
+    ) -> str:
         """Search a vector database using vector similarity search."""
         try:
-            db = get_database_by_name(input.db_name)
-            kwargs: dict[str, Any] = {"limit": input.limit}
-            if input.collection_name is not None:
-                kwargs["collection_name"] = input.collection_name
+            db = get_database_by_name(database)
+            kwargs: dict[str, Any] = {"limit": limit}
+            if collection is not None:
+                kwargs["collection_name"] = collection
             ok, response = await run_with_timeout(
-                db.search(input.query, **kwargs), "search", get_timeout("search")
+                db.search(query, **kwargs), "search", get_timeout("search")
             )
             if not ok:
                 return str(response)
             # Serialize list of results to JSON string for consistent str tool output
             return json.dumps(response, indent=2, default=str)
         except Exception as e:
-            error_msg = f"Failed to search vector database '{input.db_name}': {str(e)}"
+            error_msg = f"Failed to search vector database '{database}': {str(e)}"
             logger.error(error_msg)
             return f"Error: {error_msg}"
 

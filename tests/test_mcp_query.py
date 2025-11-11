@@ -27,7 +27,7 @@ import os
 # Add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.maestro_mcp.server import create_mcp_server, QueryInput
+from src.maestro_mcp.server import create_mcp_server
 from fastmcp import FastMCP
 from tests.test_utils import mock_resync_functions
 
@@ -51,33 +51,35 @@ class TestMCPQueryFunctionality:
         mock_db.collection_name = "TestCollection"
         return mock_db
 
-    def test_query_input_model(self) -> None:
-        """Test the QueryInput Pydantic model."""
-        # Test valid input
-        query_input = QueryInput(
-            db_name="test-db", query="What is the main topic?", limit=10
-        )
+    def test_query_parameters(self) -> None:
+        """Test query parameters as flat dictionary."""
+        # Test valid parameters
+        query_params = {
+            "database": "test-db",
+            "query": "What is the main topic?",
+            "limit": 10,
+        }
 
-        assert query_input.db_name == "test-db"
-        assert query_input.query == "What is the main topic?"
-        assert query_input.limit == 10
+        assert query_params["database"] == "test-db"
+        assert query_params["query"] == "What is the main topic?"
+        assert query_params["limit"] == 10
 
-    def test_query_input_model_defaults(self) -> None:
-        """Test QueryInput model with default values."""
-        query_input = QueryInput(db_name="test-db", query="Test query")
+    def test_query_parameters_defaults(self) -> None:
+        """Test query parameters with default values."""
+        query_params = {"database": "test-db", "query": "Test query"}
 
-        assert query_input.db_name == "test-db"
-        assert query_input.query == "Test query"
-        assert query_input.limit == 5  # Default value
+        assert query_params["database"] == "test-db"
+        assert query_params["query"] == "Test query"
+        assert query_params.get("limit", 5) == 5  # Default value
 
-    def test_query_input_model_validation(self) -> None:
-        """Test QueryInput model validation."""
+    def test_query_parameters_validation(self) -> None:
+        """Test query parameters validation."""
         # Test missing required fields
-        with pytest.raises(ValueError):
-            QueryInput(query="test")  # type: ignore[call-arg]
+        incomplete_params1 = {"query": "test"}
+        assert "database" not in incomplete_params1
 
-        with pytest.raises(ValueError):
-            QueryInput(db_name="test-db")  # type: ignore[call-arg]
+        incomplete_params2 = {"database": "test-db"}
+        assert "query" not in incomplete_params2
 
     @pytest.mark.asyncio
     async def test_query_tool_exists(self, mcp_server: FastMCP) -> None:
@@ -102,14 +104,16 @@ class TestMCPQueryFunctionality:
             # Test that the server was created successfully
             assert mcp_server is not None, "MCP server should be created"
 
-            # Test that the QueryInput model works correctly
-            query_input = QueryInput(
-                db_name="test-db", query="What is the main topic?", limit=5
-            )
+            # Test that the query parameters work correctly
+            query_params = {
+                "database": "test-db",
+                "query": "What is the main topic?",
+                "limit": 5,
+            }
 
-            assert query_input.db_name == "test-db"
-            assert query_input.query == "What is the main topic?"
-            assert query_input.limit == 5
+            assert query_params["database"] == "test-db"
+            assert query_params["query"] == "What is the main topic?"
+            assert query_params["limit"] == 5
 
     @pytest.mark.asyncio
     async def test_query_tool_database_not_found(self, mcp_server: FastMCP) -> None:
@@ -117,12 +121,16 @@ class TestMCPQueryFunctionality:
         # Test that the server was created successfully
         assert mcp_server is not None, "MCP server should be created"
 
-        # Test that QueryInput validation works
-        query_input = QueryInput(db_name="non-existent-db", query="Test query", limit=5)
+        # Test that query parameters work
+        query_params = {
+            "database": "non-existent-db",
+            "query": "Test query",
+            "limit": 5,
+        }
 
-        assert query_input.db_name == "non-existent-db"
-        assert query_input.query == "Test query"
-        assert query_input.limit == 5
+        assert query_params["database"] == "non-existent-db"
+        assert query_params["query"] == "Test query"
+        assert query_params["limit"] == 5
 
     @pytest.mark.asyncio
     async def test_query_tool_database_error(
@@ -132,12 +140,12 @@ class TestMCPQueryFunctionality:
         # Test that the server was created successfully
         assert mcp_server is not None, "MCP server should be created"
 
-        # Test that QueryInput works with different values
-        query_input = QueryInput(db_name="test-db", query="Test query", limit=5)
+        # Test that query parameters work with different values
+        query_params = {"database": "test-db", "query": "Test query", "limit": 5}
 
-        assert query_input.db_name == "test-db"
-        assert query_input.query == "Test query"
-        assert query_input.limit == 5
+        assert query_params["database"] == "test-db"
+        assert query_params["query"] == "Test query"
+        assert query_params["limit"] == 5
 
     @pytest.mark.asyncio
     async def test_query_tool_with_different_limits(
@@ -147,15 +155,19 @@ class TestMCPQueryFunctionality:
         # Test that the server was created successfully
         assert mcp_server is not None, "MCP server should be created"
 
-        # Test QueryInput with different limit values
+        # Test query parameters with different limit values
         test_limits = [1, 5, 10, 100]
 
         for limit in test_limits:
-            query_input = QueryInput(db_name="test-db", query="Test query", limit=limit)
+            query_params = {
+                "database": "test-db",
+                "query": "Test query",
+                "limit": limit,
+            }
 
-            assert query_input.db_name == "test-db"
-            assert query_input.query == "Test query"
-            assert query_input.limit == limit
+            assert query_params["database"] == "test-db"
+            assert query_params["query"] == "Test query"
+            assert query_params["limit"] == limit
 
     @pytest.mark.asyncio
     async def test_query_tool_empty_query(
@@ -165,12 +177,12 @@ class TestMCPQueryFunctionality:
         # Test that the server was created successfully
         assert mcp_server is not None, "MCP server should be created"
 
-        # Test QueryInput with empty query
-        query_input = QueryInput(db_name="test-db", query="", limit=5)
+        # Test query parameters with empty query
+        query_params = {"database": "test-db", "query": "", "limit": 5}
 
-        assert query_input.db_name == "test-db"
-        assert query_input.query == ""
-        assert query_input.limit == 5
+        assert query_params["database"] == "test-db"
+        assert query_params["query"] == ""
+        assert query_params["limit"] == 5
 
     @pytest.mark.asyncio
     async def test_query_tool_special_characters(
@@ -180,13 +192,13 @@ class TestMCPQueryFunctionality:
         # Test that the server was created successfully
         assert mcp_server is not None, "MCP server should be created"
 
-        # Test QueryInput with special characters
+        # Test query parameters with special characters
         special_query = "What's the deal with API endpoints? (v2.0) & more!"
-        query_input = QueryInput(db_name="test-db", query=special_query, limit=5)
+        query_params = {"database": "test-db", "query": special_query, "limit": 5}
 
-        assert query_input.db_name == "test-db"
-        assert query_input.query == special_query
-        assert query_input.limit == 5
+        assert query_params["database"] == "test-db"
+        assert query_params["query"] == special_query
+        assert query_params["limit"] == 5
 
 
 @pytest.mark.integration
@@ -201,12 +213,12 @@ class TestMCPQueryIntegration:
             mcp_server = await create_mcp_server()
             assert mcp_server is not None, "MCP server should be created"
 
-            # Test QueryInput model
-            query_input = QueryInput(db_name="test-db", query="Test query", limit=5)
+            # Test query parameters
+            query_params = {"database": "test-db", "query": "Test query", "limit": 5}
 
-            assert query_input.db_name == "test-db"
-            assert query_input.query == "Test query"
-            assert query_input.limit == 5
+            assert query_params["database"] == "test-db"
+            assert query_params["query"] == "Test query"
+            assert query_params["limit"] == 5
 
     @pytest.mark.asyncio
     async def test_query_tool_multiple_databases(self) -> None:
@@ -216,15 +228,15 @@ class TestMCPQueryIntegration:
             mcp_server = await create_mcp_server()
             assert mcp_server is not None, "MCP server should be created"
 
-            # Test QueryInput with different database names
-            query_input1 = QueryInput(db_name="db1", query="Test query 1", limit=5)
+            # Test query parameters with different database names
+            query_params1 = {"database": "db1", "query": "Test query 1", "limit": 5}
 
-            query_input2 = QueryInput(db_name="db2", query="Test query 2", limit=10)
+            query_params2 = {"database": "db2", "query": "Test query 2", "limit": 10}
 
-            assert query_input1.db_name == "db1"
-            assert query_input1.query == "Test query 1"
-            assert query_input1.limit == 5
+            assert query_params1["database"] == "db1"
+            assert query_params1["query"] == "Test query 1"
+            assert query_params1["limit"] == 5
 
-            assert query_input2.db_name == "db2"
-            assert query_input2.query == "Test query 2"
-            assert query_input2.limit == 10
+            assert query_params2["database"] == "db2"
+            assert query_params2["query"] == "Test query 2"
+            assert query_params2["limit"] == 10

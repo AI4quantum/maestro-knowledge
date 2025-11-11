@@ -19,7 +19,7 @@ import pytest
 from unittest.mock import Mock, patch
 from fastmcp import FastMCP
 
-from src.maestro_mcp.server import create_mcp_server, QueryInput
+from src.maestro_mcp.server import create_mcp_server
 from tests.test_utils import mock_resync_functions
 
 
@@ -83,17 +83,19 @@ class TestQueryWorkflowIntegration:
             # Verify server is ready
             assert mcp_server is not None
 
-            # Test QueryInput creation (this would be passed to the tool)
-            query_input = QueryInput(
-                db_name="test-db", query="What is the main topic?", limit=5
-            )
+            # Test query parameters (flat structure - no input wrapper)
+            query_params = {
+                "database": "test-db",
+                "query": "What is the main topic?",
+                "limit": 5,
+            }
 
-            assert query_input.db_name == "test-db"
-            assert query_input.query == "What is the main topic?"
-            assert query_input.limit == 5
+            assert query_params["database"] == "test-db"
+            assert query_params["query"] == "What is the main topic?"
+            assert query_params["limit"] == 5
 
             # In a real test, we'd invoke the query tool:
-            # result = await mcp_server.call_tool("query", query_input.model_dump())
+            # result = await mcp_server.call_tool("query", query_params)
             # assert "Test query response" in result.content
 
     @pytest.mark.integration
@@ -101,13 +103,15 @@ class TestQueryWorkflowIntegration:
         """Test query behavior when database doesn't exist."""
         # Mock empty vector_databases dictionary
         with patch("src.maestro_mcp.server.vector_databases", {}):
-            # Create query for non-existent database
-            query_input = QueryInput(
-                db_name="nonexistent-db", query="Test query", limit=5
-            )
+            # Create query for non-existent database (flat structure)
+            query_params = {
+                "database": "nonexistent-db",
+                "query": "Test query",
+                "limit": 5,
+            }
 
-            # Verify input is valid
-            assert query_input.db_name == "nonexistent-db"
+            # Verify parameters are valid
+            assert query_params["database"] == "nonexistent-db"
 
             # In a real test, we'd verify the tool returns an error:
             # with pytest.raises(ValueError, match="not found"):

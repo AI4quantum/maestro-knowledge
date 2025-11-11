@@ -216,7 +216,7 @@ start_http_server() {
     fi
     
     # Start the HTTP server in background
-    python -c "
+    uv run python -c "
 import sys
 sys.path.insert(0, '$SCRIPT_DIR')
 from src.maestro_mcp.server import run_http_server_sync
@@ -262,7 +262,7 @@ start_stdio_server() {
     fi
     
     # Test module import
-    if python -c "import $PYTHON_MODULE; print('Module imported successfully')" > "$LOG_FILE" 2>&1; then
+    if uv run python -c "import $PYTHON_MODULE; print('Module imported successfully')" > "$LOG_FILE" 2>&1; then
         print_success "FastMCP stdio server module is ready"
         print_status "To use with MCP clients, run: python -m $PYTHON_MODULE"
         # Create a status file to track that the module is ready
@@ -288,13 +288,13 @@ main() {
     parse_args "$@"
     
     # Check if Python is available
-    if ! command -v python &> /dev/null; then
-        print_error "Python is not installed or not in PATH"
+    if ! command -v uv &> /dev/null; then
+        print_error "uv is not installed or not in PATH"
         exit 1
     fi
     
     # Check if the MCP module exists
-    if ! python -c "import $PYTHON_MODULE" 2>/dev/null; then
+    if ! uv run python -c "import $PYTHON_MODULE" 2>/dev/null; then
         print_error "MCP server module not found: $PYTHON_MODULE"
         print_status "Make sure you're running this from the project root directory"
         exit 1

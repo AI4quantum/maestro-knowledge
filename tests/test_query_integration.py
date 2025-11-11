@@ -26,7 +26,7 @@ import os
 # Add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.maestro_mcp.server import create_mcp_server, QueryInput
+from src.maestro_mcp.server import create_mcp_server
 from fastmcp import FastMCP
 from tests.test_utils import mock_resync_functions
 
@@ -56,14 +56,16 @@ class TestQueryIntegration:
         # Test that the server was created successfully
         assert mcp_server is not None, "MCP server should be created"
 
-        # Test QueryInput model
-        query_input = QueryInput(
-            db_name="test-db", query="What is the main topic?", limit=5
-        )
+        # Test query parameters
+        query_params = {
+            "database": "test-db",
+            "query": "What is the main topic?",
+            "limit": 5,
+        }
 
-        assert query_input.db_name == "test-db"
-        assert query_input.query == "What is the main topic?"
-        assert query_input.limit == 5
+        assert query_params["database"] == "test-db"
+        assert query_params["query"] == "What is the main topic?"
+        assert query_params["limit"] == 5
 
     @pytest.mark.asyncio
     async def test_query_with_real_vector_db_factory(self) -> None:
@@ -73,12 +75,12 @@ class TestQueryIntegration:
             mcp_server = await create_mcp_server()
             assert mcp_server is not None, "MCP server should be created"
 
-            # Test QueryInput model
-            query_input = QueryInput(db_name="test-db", query="Test query", limit=5)
+            # Test query parameters
+            query_params = {"database": "test-db", "query": "Test query", "limit": 5}
 
-            assert query_input.db_name == "test-db"
-            assert query_input.query == "Test query"
-            assert query_input.limit == 5
+            assert query_params["database"] == "test-db"
+            assert query_params["query"] == "Test query"
+            assert query_params["limit"] == 5
 
     @pytest.mark.asyncio
     async def test_query_multiple_databases_integration(self) -> None:
@@ -88,22 +90,26 @@ class TestQueryIntegration:
             mcp_server = await create_mcp_server()
             assert mcp_server is not None, "MCP server should be created"
 
-            # Test QueryInput with different database names
-            query_input1 = QueryInput(
-                db_name="weaviate-db", query="Test query 1", limit=5
-            )
+            # Test query parameters with different database names
+            query_params1 = {
+                "database": "weaviate-db",
+                "query": "Test query 1",
+                "limit": 5,
+            }
 
-            query_input2 = QueryInput(
-                db_name="milvus-db", query="Test query 2", limit=10
-            )
+            query_params2 = {
+                "database": "milvus-db",
+                "query": "Test query 2",
+                "limit": 10,
+            }
 
-            assert query_input1.db_name == "weaviate-db"
-            assert query_input1.query == "Test query 1"
-            assert query_input1.limit == 5
+            assert query_params1["database"] == "weaviate-db"
+            assert query_params1["query"] == "Test query 1"
+            assert query_params1["limit"] == 5
 
-            assert query_input2.db_name == "milvus-db"
-            assert query_input2.query == "Test query 2"
-            assert query_input2.limit == 10
+            assert query_params2["database"] == "milvus-db"
+            assert query_params2["query"] == "Test query 2"
+            assert query_params2["limit"] == 10
 
     @pytest.mark.asyncio
     async def test_query_error_handling_integration(self) -> None:
@@ -113,12 +119,12 @@ class TestQueryIntegration:
             mcp_server = await create_mcp_server()
             assert mcp_server is not None, "MCP server should be created"
 
-            # Test QueryInput model
-            query_input = QueryInput(db_name="test-db", query="Test query", limit=5)
+            # Test query parameters
+            query_params = {"database": "test-db", "query": "Test query", "limit": 5}
 
-            assert query_input.db_name == "test-db"
-            assert query_input.query == "Test query"
-            assert query_input.limit == 5
+            assert query_params["database"] == "test-db"
+            assert query_params["query"] == "Test query"
+            assert query_params["limit"] == 5
 
     @pytest.mark.asyncio
     async def test_query_with_different_limits_integration(self) -> None:
@@ -128,19 +134,19 @@ class TestQueryIntegration:
             mcp_server = await create_mcp_server()
             assert mcp_server is not None, "MCP server should be created"
 
-            # Test QueryInput with different limit values
+            # Test query parameters with different limit values
             test_cases = [1, 5, 10, 100]
 
             for limit in test_cases:
-                query_input = QueryInput(
-                    db_name="test-db",
-                    query=f"Test query with limit {limit}",
-                    limit=limit,
-                )
+                query_params = {
+                    "database": "test-db",
+                    "query": f"Test query with limit {limit}",
+                    "limit": limit,
+                }
 
-                assert query_input.db_name == "test-db"
-                assert query_input.query == f"Test query with limit {limit}"
-                assert query_input.limit == limit
+                assert query_params["database"] == "test-db"
+                assert query_params["query"] == f"Test query with limit {limit}"
+                assert query_params["limit"] == limit
 
     @pytest.mark.asyncio
     async def test_query_special_characters_integration(self) -> None:
@@ -156,10 +162,10 @@ class TestQueryIntegration:
                 "Unicode: αβγδε ζηθικλμν ξοπρστ υφχψω",
             ]
             for query in special_queries:
-                query_input = QueryInput(db_name="test-db", query=query, limit=5)
-                assert query_input.db_name == "test-db"
-                assert query_input.query == query
-                assert query_input.limit == 5
+                query_params = {"database": "test-db", "query": query, "limit": 5}
+                assert query_params["database"] == "test-db"
+                assert query_params["query"] == query
+                assert query_params["limit"] == 5
 
 
 @pytest.mark.integration
@@ -279,10 +285,10 @@ class TestQueryEndToEnd:
         with mock_resync_functions():
             mcp_server = await create_mcp_server()
             assert mcp_server is not None, "MCP server should be created"
-            query_input = QueryInput(db_name="test-db", query="Test query", limit=5)
-            assert query_input.db_name == "test-db"
-            assert query_input.query == "Test query"
-            assert query_input.limit == 5
+            query_params = {"database": "test-db", "query": "Test query", "limit": 5}
+            assert query_params["database"] == "test-db"
+            assert query_params["query"] == "Test query"
+            assert query_params["limit"] == 5
 
     def test_query_cli_integration_e2e(self) -> None:
         """Test CLI integration end-to-end."""
