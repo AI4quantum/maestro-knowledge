@@ -5,9 +5,9 @@ including text, markdown, HTML, and PDF.
 """
 
 from .base import ContentConverter
-from .registry import ConverterRegistry, get_converter_registry
 from .detector import ContentDetector
 from .fetcher import DocumentFetcher
+from .registry import ConverterRegistry, get_converter_registry
 
 __all__ = [
     "ContentConverter",

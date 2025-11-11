@@ -9,9 +9,10 @@ Tests to verify that MCP tool schemas use flat parameters (no 'input' wrapper).
 This ensures LLM agents can properly interact with the tools.
 """
 
-import pytest
 import sys
 from pathlib import Path
+
+import pytest
 
 # Ensure the project root is in sys.path
 project_root = Path(__file__).parent.parent.resolve()
@@ -66,7 +67,7 @@ async def test_flat_parameters_in_sample_tools() -> None:
 
     # Test a sample of critical tools
     tools_to_test = [
-        ("create_vector_database_tool", ["database", "database_type", "collection"]),
+        ("register_database", ["database", "database_type", "collection"]),
         ("query", ["database", "query", "limit", "collection"]),
         ("search", ["database", "query", "limit", "collection"]),
         ("write_documents", ["database", "documents", "embedding"]),
@@ -119,7 +120,7 @@ async def test_all_tools_accessible() -> None:
     server = await create_mcp_server()
 
     expected_tools = [
-        "create_vector_database_tool",
+        "register_database",
         "setup_database",
         "get_supported_embeddings",
         "get_supported_chunking_strategies",

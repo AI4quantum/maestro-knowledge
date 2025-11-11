@@ -2,9 +2,9 @@
 
 > **⚠️ MIGRATION IN PROGRESS**
 >
-> **Current Status**: Phase 1 COMPLETE ✅
+> **Current Status**: Phase 1 & 2 COMPLETE ✅
 >
-> **Next Phase**: Phase 2 (Parameter Renaming) - See `docs/REFACTORING_PLAN.md` lines 117-162
+> **Next Phase**: Phase 3 (Bug Fixes) - See `docs/REFACTORING_PLAN.md`
 >
 > **For AI Agents**: Check `docs/AGENTS.md` for development tips and common pitfalls
 
@@ -13,7 +13,9 @@
 | Phase | Status | Description | Breaking Changes |
 |-------|--------|-------------|------------------|
 | Phase 1 | ✅ COMPLETE | Remove 'input' wrapper | YES - All tool calls |
-| Phase 2 | 📋 PLANNED | Rename parameters | YES - Parameter names |
+| Phase 2 | ✅ COMPLETE | Remove per-write embedding | YES - Embedding architecture |
+| Phase 2.5 | ✅ COMPLETE | Improve embedding docs | NO |
+| Phase 2.6 | ✅ COMPLETE | Separate setup from collection creation | YES - Tool naming & workflow |
 | Phase 3 | 📋 PLANNED | Fix reassembly bug | NO |
 | Phase 4 | 📋 PLANNED | Add ownership metadata | NO |
 | Phase 5 | 📋 PLANNED | Implement access control | NO |
@@ -77,22 +79,125 @@ await client.call_tool("query", {
 })
 ```
 
-### Phase 2: Parameter Renaming (COMPLETED)
+### Phase 2: Embedding Architecture Simplification (COMPLETED)
 
 **What Changed:**
-- Parameter names made more intuitive and LLM-friendly
-- Consistent naming across all tools
+- Removed `embedding` parameter from all write operations (write_documents, write_document, write_document_to_collection)
+- Embedding model is now configured ONLY during collection creation (setup_database, create_collection)
+- All documents in a collection use the same embedding model (required for vector search consistency)
+- Simplified API with clearer semantics
 
-**Migration Required:** YES - Update parameter names in all tool calls
+**Migration Required:** YES - Remove embedding parameter from write calls
 
-#### Parameter Name Changes
+**Rationale:** Per-document embedding configuration was confusing and technically incorrect. Vector search requires all documents in a collection to use the same embedding model for meaningful similarity comparisons.
 
-| Old Name | New Name | Used In |
-|----------|----------|---------|
-| `db_name` | `database` | All database operations |
-| `db_type` | `database_type` | create_vector_database_tool |
-| `collection_name` | `collection` | All collection operations |
-| `doc_name` | `document_name` | Document-specific operations |
+#### API Changes
+
+**Before (Phase 1):**
+```python
+# Old: Embedding could be specified per-write (INCORRECT)
+await client.call_tool("write_documents", {
+    "database": "mydb",
+    "documents": [...],
+    "embedding": "text-embedding-ada-002"  # ❌ Removed
+})
+```
+
+**After (Phase 2):**
+```python
+# Step 1: Set embedding during collection creation
+await client.call_tool("setup_database", {
+    "database": "mydb",
+    "embedding": "text-embedding-ada-002"  # ✅ Set once here
+})
+
+# Step 2: Write documents (no embedding parameter)
+await client.call_tool("write_documents", {
+    "database": "mydb",
+
+### Phase 2.5: Improved Embedding Documentation (COMPLETED)
+
+**What Changed:**
+- Enhanced documentation for `embedding` parameter in `setup_database` and `create_collection`
+- Clarified available embedding options and their behavior
+- Added explicit guidance on when to use `custom_local` embedding
+
+**Migration Required:** NO - Documentation only
+
+**Benefits:**
+- Clearer understanding of embedding options
+- Better guidance for custom embedding configuration
+- Explicit documentation of 'default' behavior
+
+### Phase 2.6: Separated Database Setup from Collection Creation (COMPLETED)
+
+**What Changed:**
+- `setup_database` now ONLY initializes database connection (no longer creates collections)
+- Added new `create_collection()` method to vector database implementations
+- Renamed `create_vector_database_tool` to `register_database` for clarity
+- Collections must now be created explicitly using `create_collection()`
+
+**Migration Required:** YES - Workflow changes required
+
+**Rationale:** Clearer separation of concerns makes the API more explicit and easier to understand for LLM agents. Database initialization and collection creation are now distinct operations.
+
+#### Before (Phase 2)
+```python
+# Old: setup_database created a default collection
+await client.call_tool("create_vector_database_tool", {
+    "database": "mydb",
+    "database_type": "milvus",
+    "collection": "docs"
+})
+
+await client.call_tool("setup_database", {
+    "database": "mydb",
+    "embedding": "text-embedding-ada-002"
+})
+# Collection was created automatically during setup
+```
+
+#### After (Phase 2.6)
+```python
+# New: Explicit three-step process
+# Step 1: Register database instance
+await client.call_tool("register_database", {  # Renamed from create_vector_database_tool
+    "database": "mydb",
+    "database_type": "milvus",
+    "collection": "docs"  # Default collection name only
+})
+
+# Step 2: Initialize connection
+await client.call_tool("setup_database", {
+    "database": "mydb",
+    "embedding": "text-embedding-ada-002"
+})
+
+# Step 3: Explicitly create collection
+await client.call_tool("create_collection", {
+    "database": "mydb",
+    "collection": "docs",
+    "embedding": "text-embedding-ada-002"
+})
+```
+
+#### Tool Naming Changes
+- `create_vector_database_tool` → `register_database` (more accurate name)
+- `setup_database` behavior changed (no longer creates collections)
+- `cleanup` remains the counterpart to both `register_database` and `setup_database`
+
+#### Operation Symmetry
+```
+register_database    → Creates registry entry
+setup_database      → Initializes connection  
+create_collection   → Creates collection
+delete_collection   → Deletes collection
+cleanup             → Closes connection & removes registry entry
+```
+
+    "documents": [...]  # Uses collection's embedding model
+})
+```
 
 #### Examples
 
@@ -136,7 +241,8 @@ await client.call_tool("query", {
 
 ### Database Management Tools
 
-#### create_vector_database_tool
+#### register_database (formerly create_vector_database_tool)
+**⚠️ RENAMED in Phase 2.6**
 ```python
 # New format
 {
@@ -146,13 +252,18 @@ await client.call_tool("query", {
 }
 ```
 
+**Migration Note:** The tool `create_vector_database_tool` has been renamed to `register_database` for clarity. This tool creates an in-memory registry entry. After registration, you must call `setup_database()` to initialize the connection, then `create_collection()` to create collections.
+
 #### setup_database
+**⚠️ BEHAVIOR CHANGED in Phase 2.6**
 ```python
 {
     "database": str,              # Required: Database name
     "embedding": str              # Optional: Default "default"
 }
 ```
+
+**Migration Note:** `setup_database` now ONLY initializes the database connection. It no longer creates collections. You must explicitly call `create_collection()` after setup.
 
 #### get_database_info
 ```python
@@ -214,8 +325,8 @@ await client.call_tool("query", {
 ```python
 {
     "database": str,              # Required: Database name
-    "documents": list[dict],      # Required: List of documents
-    "embedding": str              # Optional: DEPRECATED, ignored
+    "documents": list[dict]       # Required: List of documents
+    # Note: Uses embedding model configured during collection creation
 }
 ```
 
@@ -226,8 +337,8 @@ await client.call_tool("query", {
     "url": str,                   # Required: Document URL
     "text": str,                  # Required: Document text
     "metadata": dict,             # Optional: Additional metadata
-    "vector": list[float],        # Optional: Pre-computed vector
-    "embedding": str              # Optional: DEPRECATED, ignored
+    "vector": list[float]         # Optional: Pre-computed vector
+    # Note: Uses embedding model configured during collection creation
 }
 ```
 
@@ -240,8 +351,8 @@ await client.call_tool("query", {
     "text": str,                  # Required: Document text
     "url": str,                   # Required: Document URL
     "metadata": dict,             # Optional: Additional metadata
-    "vector": list[float],        # Optional: Pre-computed vector
-    "embedding": str              # Optional: DEPRECATED, ignored
+    "vector": list[float]         # Optional: Pre-computed vector
+    # Note: Uses embedding model configured during collection creation
 }
 ```
 

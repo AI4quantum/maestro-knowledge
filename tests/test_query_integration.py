@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: Apache 2.0
 # Copyright (c) 2025 IBM
 
-import warnings
-import pytest
 import subprocess
-from unittest.mock import Mock, patch
+import warnings
 from typing import Any
+from unittest.mock import Mock, patch
+
+import pytest
 
 # Suppress Pydantic deprecation warnings from dependencies
 warnings.filterwarnings(
@@ -20,14 +21,15 @@ warnings.filterwarnings(
     message=".*Support for class-based `config`.*",
 )
 
-import sys
 import os
+import sys
 
 # Add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.maestro_mcp.server import create_mcp_server
 from fastmcp import FastMCP
+
+from src.maestro_mcp.server import create_mcp_server
 from tests.test_utils import mock_resync_functions
 
 

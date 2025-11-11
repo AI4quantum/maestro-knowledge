@@ -1,8 +1,8 @@
 """E2E tests for document chunking with verification of chunking, reassembly, and search."""
 
 import os
-from pathlib import Path
 from collections.abc import Generator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -10,8 +10,8 @@ import pytest
 # Configure pytest-asyncio to use function scope for event loop
 pytestmark = pytest.mark.asyncio(scope="function")
 
-from src.db.vector_db_milvus import MilvusVectorDatabase
 from src.chunking import ChunkingConfig, chunk_text
+from src.db.vector_db_milvus import MilvusVectorDatabase
 
 
 async def create_test_db(

@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache 2.0
 # Copyright (c) 2025 IBM
 
-import warnings
-import sys
 import os
 import subprocess
+import sys
+import warnings
 from unittest.mock import patch
 
 # Suppress Pydantic deprecation warnings from dependencies

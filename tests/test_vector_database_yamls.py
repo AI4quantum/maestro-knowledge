@@ -5,11 +5,12 @@ Tests for vector database YAML configuration validation against JSON schema.
 import json
 import os
 import re
+from pathlib import Path
+from typing import Any
+
 import pytest
 import yaml
-from pathlib import Path
-from jsonschema import validate, ValidationError
-from typing import Any
+from jsonschema import ValidationError, validate
 
 
 def replace_env_vars_in_yaml(content: str) -> str:

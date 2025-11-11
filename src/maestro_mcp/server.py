@@ -6,16 +6,16 @@ import json
 import logging
 import os
 import sys
-from typing import Any, cast
 from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
 from fastmcp import FastMCP
 from fastmcp.tools.tool import ToolResult
+from pydantic import BaseModel, Field
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
-from pydantic import BaseModel, Field
 
 from src.chunking import ChunkingConfig
 from src.db.vector_db_base import VectorDatabase
@@ -455,7 +455,7 @@ async def create_mcp_server() -> FastMCP:
         )
 
     @app.tool()
-    async def create_vector_database_tool(
+    async def register_database(
         database: str = Field(
             ..., description="Unique name for the vector database instance"
         ),
@@ -465,12 +465,20 @@ async def create_mcp_server() -> FastMCP:
             json_schema_extra={"enum": ["weaviate", "milvus"]},
         ),
         collection: str = Field(
-            default="MaestroDocs", description="Name of the collection to use"
+            default="MaestroDocs", description="Name of the default collection to use"
         ),
     ) -> str:
-        """Create a new vector database instance."""
+        """
+        Register a new vector database instance.
+
+        This creates an in-memory registry entry for a database instance.
+        After registration, use setup_database() to initialize the connection,
+        then create_collection() to create collections.
+        """
         try:
-            logger.info(f"Creating vector database: {database} of type {database_type}")
+            logger.info(
+                f"Registering vector database: {database} of type {database_type}"
+            )
             logger.info(
                 f"Current vector_databases keys: {list(vector_databases.keys())}"
             )
@@ -487,12 +495,12 @@ async def create_mcp_server() -> FastMCP:
             )
 
             logger.info(
-                f"Created database. Updated vector_databases keys: {list(vector_databases.keys())}"
+                f"Registered database. Updated vector_databases keys: {list(vector_databases.keys())}"
             )
 
-            return f"Successfully created {database_type} vector database '{database}' with collection '{collection}'"
+            return f"Successfully registered {database_type} vector database '{database}' with default collection '{collection}'. Use setup_database() to initialize the connection."
         except Exception as e:
-            error_msg = f"Failed to create vector database '{database}': {str(e)}"
+            error_msg = f"Failed to register vector database '{database}': {str(e)}"
             logger.error(error_msg)
             return f"Error: {error_msg}"
 
@@ -502,37 +510,42 @@ async def create_mcp_server() -> FastMCP:
             ..., description="Name of the vector database instance to set up"
         ),
         embedding: str = Field(
-            default="default", description="Embedding model to use for the collection"
+            default="default",
+            description=(
+                "Embedding model to use. Options: 'default' (OpenAI text-embedding-ada-002), "
+                "'text-embedding-ada-002', 'text-embedding-3-small', 'text-embedding-3-large', "
+                "or 'custom_local' (requires CUSTOM_EMBEDDING_URL, CUSTOM_EMBEDDING_MODEL, and "
+                "CUSTOM_EMBEDDING_VECTORSIZE environment variables). Note: 'default' always uses "
+                "OpenAI even if custom embedding is configured."
+            ),
         ),
     ) -> str:
-        """Set up a vector database and create collections."""
+        """
+        Initialize a vector database connection.
+
+        This only sets up the database client connection. Collections must be created
+        explicitly using create_collection() after setup.
+
+        Prerequisites: Database must be registered first using register_database().
+        """
         try:
+            # Validate database is registered
+            if database not in vector_databases:
+                return f"Error: Database '{database}' not found. Use register_database() first to register the database instance."
+
             db = get_database_by_name(database)
 
-            # Check if the database supports the setup method with embedding parameter
+            # Call setup to initialize the database connection
             if hasattr(db, "setup"):
-                # Get the number of parameters in the setup method
-                param_count = len(db.setup.__code__.co_varnames)
-                if param_count > 2:  # self, embedding, collection_name
-                    ok, res = await run_with_timeout(
-                        db.setup(embedding=embedding),
-                        "setup_database",
-                        get_timeout("setup_database"),
-                    )
-                elif param_count > 1:  # self, embedding
-                    ok, res = await run_with_timeout(
-                        db.setup(embedding=embedding),
-                        "setup_database",
-                        get_timeout("setup_database"),
-                    )
-                else:  # self only
-                    ok, res = await run_with_timeout(
-                        db.setup(), "setup_database", get_timeout("setup_database")
-                    )
+                ok, res = await run_with_timeout(
+                    db.setup(embedding=embedding),
+                    "setup_database",
+                    get_timeout("setup_database"),
+                )
                 if not ok:
                     return str(res)
 
-            return f"Successfully set up {db.db_type} vector database '{database}' with embedding '{embedding}'"
+            return f"Successfully initialized {db.db_type} vector database '{database}' connection. Use create_collection() to create collections."
         except Exception as e:
             error_msg = f"Failed to set up vector database '{database}': {str(e)}"
             logger.error(error_msg)
@@ -627,10 +640,6 @@ async def create_mcp_server() -> FastMCP:
                 "are provided, 'text' takes precedence (no fetching occurs)."
             ),
         ),
-        embedding: str = Field(
-            default="default",
-            description="(DEPRECATED) Embedding strategy to use; ignored at write time",
-        ),
     ) -> str:
         """
         Write documents to a vector database with automatic URL fetching and format conversion.
@@ -645,6 +654,7 @@ async def create_mcp_server() -> FastMCP:
         - Security: Only HTTP/HTTPS allowed; file:// paths restricted to CWD and subdirectories
         - Backwards Compatible: Direct 'text' field still works; takes precedence over URL fetching
         - Metadata Enrichment: Fetched documents get enriched with content_type, fetched_at, etc.
+        - Embedding Model: Configured at collection creation time, automatically included in chunk metadata
 
         Document Format:
         Each document in the 'documents' list should be a dict with:
@@ -668,7 +678,6 @@ async def create_mcp_server() -> FastMCP:
         - PDF conversion is basic text extraction (no OCR, no complex layouts)
         - HTML conversion may not preserve all formatting
         - Large files may hit timeout limits
-        - Embedding is configured per-collection, not per-document
 
         Returns:
         JSON string with:
@@ -678,32 +687,13 @@ async def create_mcp_server() -> FastMCP:
         - collection_info: Updated collection information
         - sample_query_suggestion: Suggested query to test the collection
 
-        Note: Embedding at write-time is deprecated; collection-level embedding is used.
+        Note: Embedding model is configured at collection creation time via setup_database or create_collection.
         """
         db = get_database_by_name(database)
-        # Deprecation: ignore per-document embedding; use collection embedding
-        if embedding and embedding != "default":
-            logger.warning(
-                "Deprecation: embedding specified at write_documents is ignored; embedding is configured per collection."
-            )
-        # Use the database's current collection embedding where applicable
-        coll_info: dict[str, Any] | None = None
-        try:
-            # Best effort: fetch current collection info to get embedding
-            ok, coll_info_any = await run_with_timeout(
-                db.get_collection_info(),
-                "get_collection_info",
-                get_timeout("get_collection_info"),
-            )
-            if ok:
-                coll_info = cast("dict[str, Any]", coll_info_any)
-        except Exception:
-            pass
-        collection_embedding = (coll_info or {}).get("embedding", "default")
         stats: Any = None
         try:
             ok, stats_any = await run_with_timeout(
-                db.write_documents(documents, embedding=collection_embedding),
+                db.write_documents(documents),
                 "write_documents",
                 get_timeout("write_bulk"),
             )
@@ -770,10 +760,6 @@ async def create_mcp_server() -> FastMCP:
             default=None,
             description="Pre-computed vector embedding (optional, for Milvus)",
         ),
-        embedding: str = Field(
-            default="default",
-            description="(DEPRECATED) Embedding strategy to use; ignored at write time",
-        ),
     ) -> str:
         """
         Write a single document to a vector database with automatic URL fetching and format conversion.
@@ -798,7 +784,7 @@ async def create_mcp_server() -> FastMCP:
         JSON string with status, message, write_stats, and collection_info.
 
         Note: For batch operations, use write_documents instead for better performance.
-        Embedding is configured per-collection, not per-document.
+        Embedding model is configured at collection creation time.
         """
         db = get_database_by_name(database)
         document: dict[str, Any] = {
@@ -811,27 +797,10 @@ async def create_mcp_server() -> FastMCP:
         if vector is not None:
             document["vector"] = vector
 
-        # Deprecation: ignore per-document embedding; use collection embedding
-        if embedding and embedding != "default":
-            logger.warning(
-                "Deprecation: embedding specified at write_document is ignored; embedding is configured per collection."
-            )
-        coll_info: dict[str, Any] | None = None
-        try:
-            ok, coll_info_any = await run_with_timeout(
-                db.get_collection_info(),
-                "get_collection_info",
-                get_timeout("get_collection_info"),
-            )
-            if ok:
-                coll_info = cast("dict[str, Any]", coll_info_any)
-        except Exception:
-            pass
-        collection_embedding = (coll_info or {}).get("embedding", "default")
         stats = None
         try:
             ok, stats = await run_with_timeout(
-                db.write_document(document, embedding=collection_embedding),
+                db.write_document(document),
                 "write_document",
                 get_timeout("write_single"),
             )
@@ -890,12 +859,8 @@ async def create_mcp_server() -> FastMCP:
             default=None,
             description="Pre-computed vector embedding (optional, for Milvus)",
         ),
-        embedding: str = Field(
-            default="default",
-            description="(DEPRECATED) Embedding strategy to use; ignored at write time",
-        ),
     ) -> str:
-        """Write a single document to a specific collection. Embedding at write-time is deprecated; collection embedding is used. Returns JSON with stats and collection info."""
+        """Write a single document to a specific collection. Embedding model is configured at collection creation time. Returns JSON with stats and collection info."""
         db = get_database_by_name(database)
 
         # Check if the collection exists
@@ -927,33 +892,11 @@ async def create_mcp_server() -> FastMCP:
         if vector is not None:
             document["vector"] = vector
 
-        # Deprecation: ignore per-document embedding; use target collection embedding
-        if embedding and embedding != "default":
-            logger.warning(
-                "Deprecation: embedding specified at write_document_to_collection is ignored; embedding is configured per collection."
-            )
-        collection_embedding = "default"
-        try:
-            ok, info_any = await run_with_timeout(
-                db.get_collection_info(collection),
-                "get_collection_info",
-                get_timeout("get_collection_info"),
-            )
-            info: dict[str, Any] = (
-                cast("dict[str, Any]", info_any)
-                if ok and isinstance(info_any, dict)
-                else {}
-            )
-            collection_embedding = info.get("embedding", "default")
-        except Exception:
-            pass
-        # Use the new write_documents_to_collection method
+        # Use the write_documents_to_collection method
         stats = None
         try:
             ok, stats = await run_with_timeout(
-                db.write_documents_to_collection(
-                    [document], collection, embedding=collection_embedding
-                ),
+                db.write_documents_to_collection([document], collection),
                 "write_document_to_collection",
                 get_timeout("write_single"),
             )
@@ -1372,15 +1315,32 @@ async def create_mcp_server() -> FastMCP:
         database: str = Field(..., description="Name of the vector database instance"),
         collection: str = Field(..., description="Name of the collection to create"),
         embedding: str = Field(
-            default="default", description="Embedding model to use for the collection"
+            default="default",
+            description=(
+                "Embedding model to use. Options: 'default' (OpenAI text-embedding-ada-002), "
+                "'text-embedding-ada-002', 'text-embedding-3-small', 'text-embedding-3-large', "
+                "or 'custom_local' (requires CUSTOM_EMBEDDING_URL, CUSTOM_EMBEDDING_MODEL, and "
+                "CUSTOM_EMBEDDING_VECTORSIZE environment variables). Note: 'default' always uses "
+                "OpenAI even if custom embedding is configured."
+            ),
         ),
         chunking_config: dict[str, Any] | None = Field(
             default=None,
             description="Optional chunking configuration for the collection. Example: {'strategy':'Sentence','parameters':{'chunk_size':256,'overlap':1}}",
         ),
     ) -> str:
-        """Create a new collection in a vector database."""
+        """
+        Create a new collection in a vector database.
+
+        Prerequisites:
+        1. Database must be registered using register_database()
+        2. Database connection must be initialized using setup_database()
+        """
         try:
+            # Validate database is registered
+            if database not in vector_databases:
+                return f"Error: Database '{database}' not found. Use register_database() first to register the database instance."
+
             db = get_database_by_name(database)
 
             # Check if collection already exists
@@ -1397,63 +1357,25 @@ async def create_mcp_server() -> FastMCP:
             if collection in existing_collections:
                 return f"Error: Collection '{collection}' already exists in vector database '{database}'"
 
-            # Temporarily switch to the new collection name
-            original_collection = db.collection_name
-            db.collection_name = collection
-
-            try:
-                # Create the collection using the setup method
-                if hasattr(db, "setup"):
-                    # Get the number of parameters in the setup method
-                    param_count = len(db.setup.__code__.co_varnames)
-                    # Try to call setup with embedding and chunking_config where supported
-                    if (param_count > 3) and (chunking_config is not None):
-                        # self, embedding, collection_name, chunking_config
-                        ok, res = await run_with_timeout(
-                            db.setup(
-                                embedding=embedding,
-                                collection_name=collection,
-                                chunking_config=chunking_config,
-                            ),
-                            "create_collection",
-                            get_timeout("create_collection"),
-                        )
-                    elif param_count > 2:  # self, embedding, collection_name
-                        ok, res = await run_with_timeout(
-                            db.setup(
-                                embedding=embedding,
-                                collection_name=collection,
-                            ),
-                            "create_collection",
-                            get_timeout("create_collection"),
-                        )
-                    elif param_count > 1:  # self, embedding
-                        ok, res = await run_with_timeout(
-                            db.setup(embedding=embedding),
-                            "create_collection",
-                            get_timeout("create_collection"),
-                        )
-                    else:  # self only
-                        ok, res = await run_with_timeout(
-                            db.setup(),
-                            "create_collection",
-                            get_timeout("create_collection"),
-                        )
-                else:
-                    ok, res = await run_with_timeout(
-                        db.setup(),
-                        "create_collection",
-                        get_timeout("create_collection"),
-                    )
+            # Create the collection using the create_collection method
+            if hasattr(db, "create_collection"):
+                ok, res = await run_with_timeout(
+                    db.create_collection(
+                        collection_name=collection,
+                        embedding=embedding,
+                        chunking_config=chunking_config,
+                    ),
+                    "create_collection",
+                    get_timeout("create_collection"),
+                )
                 if not ok:
                     return str(res)
+            else:
+                return f"Error: Database '{database}' does not support create_collection method"
 
-                # NOTE: Embedding is configured per-collection at creation time.
-                # TODO(deprecate): Remove write-time embedding parameters from write tools in a future release.
-                return f"Successfully created collection '{collection}' in vector database '{database}' with embedding '{embedding}'"
-            finally:
-                # Restore the original collection name
-                db.collection_name = original_collection
+            # NOTE: Embedding is configured per-collection at creation time.
+            # TODO(deprecate): Remove write-time embedding parameters from write tools in a future release.
+            return f"Successfully created collection '{collection}' in vector database '{database}' with embedding '{embedding}'"
 
         except Exception as e:
             error_msg = f"Failed to create collection '{collection}' in vector database '{database}': {str(e)}"

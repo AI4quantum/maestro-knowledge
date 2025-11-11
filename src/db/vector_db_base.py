@@ -163,16 +163,32 @@ class VectorDatabase(ABC):
     async def setup(
         self,
         embedding: str = "default",
-        collection_name: str = None,
-        chunking_config: dict[str, Any] = None,
     ) -> None:
         """
-        Set up the database and create collections if they don't exist.
+        Initialize the database connection.
+
+        This method only sets up the database client connection.
+        Collections must be created explicitly using create_collection().
 
         Args:
-            embedding: Embedding model to use for the collection (name or config, backend-specific)
-            collection_name: Name of the collection to set up (optional)
-            chunking_config: Configuration for the chunking strategy.
+            embedding: Default embedding model to use (stored for reference)
+        """
+        pass
+
+    @abstractmethod
+    async def create_collection(
+        self,
+        collection_name: str,
+        embedding: str = "default",
+        chunking_config: dict[str, Any] | None = None,
+    ) -> None:
+        """
+        Create a new collection in the vector database.
+
+        Args:
+            collection_name: Name of the collection to create
+            embedding: Embedding model to use for the collection
+            chunking_config: Configuration for the chunking strategy
         """
         pass
 
@@ -180,9 +196,8 @@ class VectorDatabase(ABC):
     async def write_documents(
         self,
         documents: list[dict[str, Any]],
-        embedding: str = "default",
-        collection_name: str = None,
-    ) -> None:
+        collection_name: str | None = None,
+    ) -> dict[str, Any]:
         """
         Write documents to the vector database.
 
@@ -190,6 +205,13 @@ class VectorDatabase(ABC):
             documents: List of documents with 'url', 'text', and 'metadata' fields.
                        For Milvus, documents may also include a 'vector' field.
             collection_name: Name of the collection to write to (optional)
+
+        Returns:
+            Dictionary with write statistics including chunks_written, documents_processed, etc.
+
+        Note:
+            Embedding model is configured at collection creation time via setup() or create_collection().
+            Each chunk will automatically include embedding_model metadata.
         """
         pass
 
@@ -197,8 +219,7 @@ class VectorDatabase(ABC):
         self,
         documents: list[dict[str, Any]],
         collection_name: str,
-        embedding: str = "default",
-    ) -> None:
+    ) -> dict[str, Any]:
         """
         Write documents to a specific collection in the vector database.
 
@@ -206,15 +227,20 @@ class VectorDatabase(ABC):
             documents: List of documents with 'url', 'text', and 'metadata' fields.
                        For Milvus, documents may also include a 'vector' field.
             collection_name: Name of the collection to write to
+
+        Returns:
+            Dictionary with write statistics.
+
+        Note:
+            Embedding model is configured at collection creation time.
         """
-        return await self.write_documents(documents, embedding, collection_name)
+        return await self.write_documents(documents, collection_name)
 
     async def write_document(
         self,
         document: dict[str, Any],
-        embedding: str = "default",
-        collection_name: str = None,
-    ) -> None:
+        collection_name: str | None = None,
+    ) -> dict[str, Any]:
         """
         Write a single document to the vector database.
 
@@ -222,8 +248,14 @@ class VectorDatabase(ABC):
             document: Document with 'url', 'text', and 'metadata' fields.
                      For Milvus, document may also include a 'vector' field.
             collection_name: Name of the collection to write to (optional)
+
+        Returns:
+            Dictionary with write statistics.
+
+        Note:
+            Embedding model is configured at collection creation time.
         """
-        return await self.write_documents([document], embedding, collection_name)
+        return await self.write_documents([document], collection_name)
 
     @abstractmethod
     async def list_documents(
@@ -265,7 +297,7 @@ class VectorDatabase(ABC):
 
     @abstractmethod
     async def get_document(
-        self, doc_name: str, collection_name: str = None
+        self, doc_name: str, collection_name: str | None = None
     ) -> dict[str, Any]:
         """
         Get a specific document by name from the vector database.
@@ -321,7 +353,9 @@ class VectorDatabase(ABC):
         pass
 
     @abstractmethod
-    async def get_collection_info(self, collection_name: str = None) -> dict[str, Any]:
+    async def get_collection_info(
+        self, collection_name: str | None = None
+    ) -> dict[str, Any]:
         """
         Get detailed information about a collection.
 
@@ -358,7 +392,7 @@ class VectorDatabase(ABC):
         return await self.delete_documents([document_id])
 
     @abstractmethod
-    async def delete_collection(self, collection_name: str = None) -> None:
+    async def delete_collection(self, collection_name: str | None = None) -> None:
         """
         Delete an entire collection from the database.
 
@@ -375,7 +409,7 @@ class VectorDatabase(ABC):
 
     @abstractmethod
     async def query(
-        self, query: str, limit: int = 5, collection_name: str = None
+        self, query: str, limit: int = 5, collection_name: str | None = None
     ) -> str:
         """
         Query the vector database using the default query agent.
@@ -392,8 +426,8 @@ class VectorDatabase(ABC):
 
     @abstractmethod
     async def search(
-        self, query: str, limit: int = 5, collection_name: str = None
-    ) -> list[dict]:
+        self, query: str, limit: int = 5, collection_name: str | None = None
+    ) -> list[dict[str, Any]]:
         """
         Search for documents using vector similarity search.
 
@@ -413,7 +447,7 @@ class VectorDatabase(ABC):
         pass
 
     async def get_document_chunks(
-        self, doc_id: str, collection_name: str = None
+        self, doc_id: str, collection_name: str | None = None
     ) -> list[dict[str, Any]]:
         """
         Retrieve all chunks for a specific document.
@@ -430,7 +464,7 @@ class VectorDatabase(ABC):
     # Internal helper to retrieve the full document
     def _reassemble_chunks_into_document(
         self, chunks: list[dict[str, Any]]
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         """
         Internal helper: Reassemble a document from its chunks.
 

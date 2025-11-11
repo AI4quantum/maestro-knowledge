@@ -2,8 +2,8 @@
 # Copyright (c) 2025 IBM
 
 from .vector_db_base import VectorDatabase
-from .vector_db_weaviate import WeaviateVectorDatabase
 from .vector_db_milvus import MilvusVectorDatabase
+from .vector_db_weaviate import WeaviateVectorDatabase
 
 
 def create_vector_database(

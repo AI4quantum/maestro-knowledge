@@ -28,6 +28,7 @@ use fastmcp.Client to call the server tools end-to-end.
 """
 
 from __future__ import annotations
+
 import pytest
 
 # Backend-agnostic Weaviate E2E test entrypoint using shared test logic
@@ -35,18 +36,17 @@ pytestmark = [pytest.mark.e2e, pytest.mark.requires_weaviate]
 
 from tests.e2e.common import set_backend_name
 from tests.e2e.test_functions import (
-    run_database_management_tests,
-    run_document_operations_tests,
-    run_query_operations_tests,
-    run_configuration_discovery_tests,
-    run_document_retrieval_tests,
     run_bulk_operations_tests,
     run_collection_specific_tests,
-    run_resync_operations_tests,
-    run_health_check_tests,
+    run_configuration_discovery_tests,
+    run_database_management_tests,
+    run_document_operations_tests,
+    run_document_retrieval_tests,
     run_full_flow_test,
+    run_health_check_tests,
+    run_query_operations_tests,
+    run_resync_operations_tests,
 )
-
 
 set_backend_name("weaviate")
 BACKEND_NAME = "weaviate"

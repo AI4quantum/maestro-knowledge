@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: Apache 2.0
 # Test for resync_vector_databases helper
 
-import pytest
 import os
 import sys
 from typing import Any

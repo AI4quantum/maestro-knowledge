@@ -46,7 +46,7 @@ class TestDocumentIngestionIntegration:
             with patch.object(
                 db, "_generate_embedding_async", return_value=[0.1] * 768
             ):
-                await db.write_documents(documents, embedding="custom_local")
+                await db.write_documents(documents)
 
             # Verify insert was called
             assert mock_client_instance.insert.called
@@ -80,7 +80,7 @@ class TestDocumentIngestionIntegration:
 
         # Mock embedding function
         with patch.object(db, "_generate_embedding_async", return_value=[0.1] * 768):
-            await db.write_documents(documents, embedding="custom_local")
+            await db.write_documents(documents)
 
         # Verify insert was called
         assert mock_client_instance.insert.called
@@ -124,7 +124,7 @@ class TestDocumentIngestionIntegration:
             with patch.object(
                 db, "_generate_embedding_async", return_value=[0.1] * 768
             ):
-                await db.write_documents(documents, embedding="custom_local")
+                await db.write_documents(documents)
 
             # Verify metadata was enriched
             call_args = mock_client_instance.insert.call_args
@@ -204,7 +204,7 @@ class TestDocumentIngestionIntegration:
         # Mock embedding function
         with patch.object(db, "_generate_embedding_async", return_value=[0.1] * 768):
             # Should not raise error, but should skip the document
-            await db.write_documents(documents, embedding="custom_local")
+            await db.write_documents(documents)
 
         # Verify insert was NOT called (document was skipped)
         assert not mock_client_instance.insert.called
@@ -240,7 +240,7 @@ class TestDocumentIngestionIntegration:
             with patch.object(
                 db, "_generate_embedding_async", return_value=[0.1] * 768
             ):
-                await db.write_documents(documents, embedding="custom_local")
+                await db.write_documents(documents)
 
             # Verify both documents were processed
             assert mock_client_instance.insert.called

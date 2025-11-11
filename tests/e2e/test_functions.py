@@ -26,7 +26,7 @@ async def run_database_management_tests(client: Client, backend_name: str) -> No
 
     # Test create_vector_database_tool
     res = await client.call_tool(
-        "create_vector_database_tool",
+        "register_database",
         {
             "database": db_name,
             "database_type": config["db_type"],
@@ -41,7 +41,6 @@ async def run_database_management_tests(client: Client, backend_name: str) -> No
         {
             "database": db_name,
             "collection": f"{db_name}_Collection",
-            "embedding": "default",
         },
     )
     assert hasattr(res, "data"), f"create_collection failed: {res}"
@@ -78,7 +77,7 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
 
     # Setup
     res = await client.call_tool(
-        "create_vector_database_tool",
+        "register_database",
         {
             "database": db_name,
             "database_type": config["db_type"],
@@ -92,7 +91,6 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
         {
             "database": db_name,
             "collection": f"{db_name}_Collection",
-            "embedding": "default",
         },
     )
     assert hasattr(res, "data")
@@ -113,7 +111,6 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
         {
             "database": db_name,
             "documents": docs,
-            "embedding": "default",
         },
     )
     # Accept string or object response
@@ -134,7 +131,6 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
             "text": f"This is a single document for {backend_name.title()}",
             "url": "https://example.com/single-doc",
             "metadata": {"source": "single_write_test", "backend": backend_name},
-            "embedding": "default",
         },
     )
     # Accept string or object response for write_document
@@ -194,7 +190,7 @@ async def run_query_operations_tests(client: Client, backend_name: str) -> None:
 
     # Setup
     res = await client.call_tool(
-        "create_vector_database_tool",
+        "register_database",
         {
             "database": db_name,
             "database_type": config["db_type"],
@@ -208,7 +204,6 @@ async def run_query_operations_tests(client: Client, backend_name: str) -> None:
         {
             "database": db_name,
             "collection": f"{db_name}_Collection",
-            "embedding": "default",
         },
     )
     assert hasattr(res, "data")
@@ -233,7 +228,6 @@ async def run_query_operations_tests(client: Client, backend_name: str) -> None:
         {
             "database": db_name,
             "documents": docs,
-            "embedding": "default",
         },
     )
     assert hasattr(res, "data")
@@ -272,7 +266,7 @@ async def run_configuration_discovery_tests(client: Client, backend_name: str) -
 
     # Create a test database first
     res = await client.call_tool(
-        "create_vector_database_tool",
+        "register_database",
         {
             "database": db_name,
             "database_type": config["db_type"],
@@ -313,7 +307,7 @@ async def run_document_retrieval_tests(client: Client, backend_name: str) -> Non
 
     # First create the database (setup_database requires database to exist first)
     res = await client.call_tool(
-        "create_vector_database_tool",
+        "register_database",
         {
             "database": db_name,
             "database_type": config["db_type"],
@@ -327,7 +321,6 @@ async def run_document_retrieval_tests(client: Client, backend_name: str) -> Non
         "setup_database",
         {
             "database": db_name,
-            "embedding": "default",
         },
     )
     assert hasattr(res, "data")
@@ -338,7 +331,6 @@ async def run_document_retrieval_tests(client: Client, backend_name: str) -> Non
         {
             "database": db_name,
             "collection": f"{db_name}_Collection",
-            "embedding": "default",
         },
     )
     assert hasattr(res, "data")
@@ -355,7 +347,6 @@ async def run_document_retrieval_tests(client: Client, backend_name: str) -> Non
         {
             "database": db_name,
             "documents": [test_doc],
-            "embedding": "default",
         },
     )
     assert hasattr(res, "data")
@@ -387,7 +378,7 @@ async def run_bulk_operations_tests(client: Client, backend_name: str) -> None:
 
     # Setup
     res = await client.call_tool(
-        "create_vector_database_tool",
+        "register_database",
         {
             "database": db_name,
             "database_type": config["db_type"],
@@ -401,7 +392,6 @@ async def run_bulk_operations_tests(client: Client, backend_name: str) -> None:
         {
             "database": db_name,
             "collection": f"{db_name}_Collection",
-            "embedding": "default",
         },
     )
     assert hasattr(res, "data")
@@ -419,7 +409,6 @@ async def run_bulk_operations_tests(client: Client, backend_name: str) -> None:
         {
             "database": db_name,
             "documents": docs,
-            "embedding": "default",
         },
     )
     assert hasattr(res, "data")
@@ -460,7 +449,7 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
     try:
         # Setup
         res = await client.call_tool(
-            "create_vector_database_tool",
+            "register_database",
             {
                 "database": db_name,
                 "database_type": config["db_type"],
@@ -478,7 +467,6 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
                 {
                     "database": db_name,
                     "collection": collection_name,
-                    "embedding": "default",
                 },
             )
             if not hasattr(res, "data"):
@@ -516,7 +504,6 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
                 "text": f"This is a collection-specific document for {backend_name.title()}",
                 "url": "https://example.com/collection-doc",
                 "metadata": {"source": "collection_test", "backend": backend_name},
-                "embedding": "default",
             },
         )
         if not hasattr(res, "data"):
@@ -646,8 +633,9 @@ async def run_health_check_tests(
 
 async def run_full_flow_test(client: Client, backend_name: str) -> None:
     """Full flow integration test covering the main workflow."""
-    import pytest
     import asyncio
+
+    import pytest
 
     config = get_backend_config(backend_name)
     db_name = get_db_name_for_test(backend_name, "Full_Flow")
@@ -655,7 +643,7 @@ async def run_full_flow_test(client: Client, backend_name: str) -> None:
     try:
         # Create vector DB
         res = await client.call_tool(
-            "create_vector_database_tool",
+            "register_database",
             {
                 "database": db_name,
                 "database_type": config["db_type"],
@@ -674,7 +662,6 @@ async def run_full_flow_test(client: Client, backend_name: str) -> None:
                 {
                     "database": db_name,
                     "collection": db_name,
-                    "embedding": "default",
                     "chunking_config": {
                         "strategy": "Sentence",
                         "parameters": {
@@ -710,7 +697,6 @@ async def run_full_flow_test(client: Client, backend_name: str) -> None:
             {
                 "database": db_name,
                 "documents": docs,
-                "embedding": "default",
             },
         )
         if not hasattr(res, "data"):

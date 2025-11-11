@@ -114,49 +114,95 @@ assert "database" in schema["parameters"]
 
 ---
 
-## Phase 2: Rename Parameters for Clarity
+## Phase 2: Remove Per-Write Embedding Parameter (COMPLETED ✅)
 
 ### Problem
-Current names like `db_name`, `collection_name` are verbose and inconsistent. Agents often guess wrong names.
+The `embedding` parameter in write operations (write_documents, write_document, write_document_to_collection) was confusing and technically incorrect. Vector search requires all documents in a collection to use the same embedding model for meaningful similarity comparisons.
 
-### Parameter Mapping
+### Solution
+- Removed `embedding` parameter from all write operations
+- Embedding model is now configured ONLY during collection creation (setup_database, create_collection)
+- Simplified API with clearer semantics
 
-| Old Name | New Name | Occurrences | Rationale |
-|----------|----------|-------------|-----------|
-| `db_name` | `database` | 17 tools | Shorter, clearer |
-| `collection_name` | `collection` | 10 tools | Shorter, clearer |
-| `doc_name` | `document_name` | 3 tools | More explicit |
-| `embedding` | `embed_model` | 6 tools | Clearer purpose |
+### Implementation Completed
 
-### Implementation Steps
-
-#### 2.1-2.4 Rename in Tool Functions
+#### 2.1 Updated MCP Server Tools ✅
 **File**: `src/maestro_mcp/server.py`
+- Removed `embedding` parameter from write_documents (line 607)
+- Removed `embedding` parameter from write_document (line 738)
+- Removed `embedding` parameter from write_document_to_collection (line 835)
+- Kept `embedding` in setup_database and create_collection (correct location)
 
-Systematic find-replace in all tool functions:
-- `db_name` → `database`
-- `collection_name` → `collection`
-- `doc_name` → `document_name`
-- `embedding` → `embed_model`
+#### 2.2 Updated Backend Implementations ✅
+**Files**: `src/db/vector_db_milvus.py`, `src/db/vector_db_weaviate.py`
+- Removed `embedding` parameter from write_documents() signatures
+- Removed embedding validation/warning code
+- Updated to use `self.embedding_model` set during setup
 
-#### 2.5 Update Function Implementations
-Update all references within function bodies:
-```python
-# BEFORE
-db = get_database_by_name(input.db_name)
+#### 2.3 Updated Base Class ✅
+**File**: `src/db/vector_db_base.py`
+- Updated write_documents(), write_document(), write_documents_to_collection() signatures
+- Fixed all type hints to use `str | None` syntax
+- Updated return types to `dict[str, Any]`
 
-# AFTER
-db = get_database_by_name(database)
-```
+#### 2.4 Updated Tests ✅
+- Removed `embedding` parameter from ~100 test calls
+- Removed 4 obsolete tests that tested per-write embedding behavior
+- Updated mock implementations to store embedding from setup()
+- All 233 tests passing
 
-#### 2.6 Update vector_databases Dictionary
-**File**: `src/maestro_mcp/server.py` (line 48)
+#### 2.5 Updated Documentation ✅
+- Updated MIGRATION_GUIDE.md with Phase 2 changes
+- Updated tool reference documentation
+- Added migration examples
 
-Update dictionary keys to use new naming convention:
-```python
-# Keys should use 'database' not 'db_name'
-vector_databases: dict[str, VectorDatabase] = {}
-```
+---
+
+## Phase 2.5: Improve Embedding Parameter Documentation (PLANNED)
+
+### Problem
+The `embedding` parameter in `setup_database` and `create_collection` is optional but its behavior isn't clear to users:
+- When omitted or set to `"default"`: Uses OpenAI's default embedding model
+- When set to `"custom_local"`: Uses custom embedding configured via environment variables
+- Users don't know they need to explicitly specify `"custom_local"` when custom embeddings are configured
+
+### Solution
+Improve tool descriptions to clarify:
+1. Parameter is optional (already implemented with `default="default"`)
+2. Available values: `"default"`, `"text-embedding-ada-002"`, `"text-embedding-3-small"`, `"text-embedding-3-large"`, `"custom_local"`
+3. When to use `"custom_local"`: When `CUSTOM_EMBEDDING_URL`, `CUSTOM_EMBEDDING_MODEL`, and `CUSTOM_EMBEDDING_VECTORSIZE` environment variables are set
+4. Behavior of `"default"`: Always uses OpenAI, even if custom embedding is configured
+
+### Implementation
+Update Field descriptions in `src/maestro_mcp/server.py`:
+- `setup_database` embedding parameter (line 504-506)
+- `create_collection` embedding parameter (line 1304-1306)
+
+---
+
+## Phase 2.6: Separate Database Setup from Collection Creation (PLANNED)
+
+### Problem
+`setup_database` currently creates a default collection, mixing two concerns:
+1. Database initialization
+2. Collection creation
+
+This makes the API less clear and harder to understand.
+
+### Solution
+Refactor `setup_database` to only initialize the database connection without creating collections. Users should explicitly call `create_collection` for each collection they need.
+
+### Benefits
+- Clearer separation of concerns
+- More explicit API
+- Easier to understand for LLM agents
+- Consistent with the principle that collections should be created explicitly
+
+### Implementation
+1. Update `setup_database` to not create collections
+2. Update documentation to show the two-step process
+3. Update tests to explicitly create collections after setup
+4. Add migration guide for this change
 
 ---
 

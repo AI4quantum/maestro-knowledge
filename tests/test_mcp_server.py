@@ -9,6 +9,7 @@ This script tests the server functionality without requiring a full MCP client.
 
 import sys
 from pathlib import Path
+
 import pytest
 
 # Ensure the project root is in sys.path

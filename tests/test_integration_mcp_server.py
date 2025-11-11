@@ -6,8 +6,8 @@ Integration tests for MCP server functionality.
 These tests use real components but mock external services.
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Add the project root to the Python path
@@ -15,8 +15,9 @@ project_root = Path(__file__).parent.parent.resolve()
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
 from fastmcp import FastMCP
 
 from src.maestro_mcp.server import create_mcp_server

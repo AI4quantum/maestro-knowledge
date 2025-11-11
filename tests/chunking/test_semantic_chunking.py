@@ -8,6 +8,7 @@ sys.path.append(
 )
 
 import pytest
+
 from src.chunking import ChunkingConfig, chunk_text
 
 

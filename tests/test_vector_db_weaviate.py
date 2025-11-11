@@ -24,8 +24,8 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 import os
 import sys
-from unittest.mock import MagicMock, patch, AsyncMock
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -256,169 +256,11 @@ class TestWeaviateVectorDatabase:
             with pytest.raises(ValueError, match="Unsupported embedding"):
                 db._get_vectorizer_config("unsupported-model")
 
-    @pytest.mark.asyncio
-    async def test_write_documents_default_embedding(self) -> None:
-        """Test writing documents to Weaviate with default embedding."""
-        with (
-            patch("weaviate.use_async_with_weaviate_cloud") as mock_connect,
-            patch.dict(
-                os.environ,
-                {
-                    "WEAVIATE_API_KEY": "test-key",
-                    "WEAVIATE_URL": "https://test.weaviate.network",
-                },
-            ),
-        ):
-            mock_client = AsyncMock()
-            mock_collection = AsyncMock()
-            mock_batch = MagicMock()
-            mock_batch_context = AsyncMock()
-
-            mock_client.collections.exists = AsyncMock(return_value=True)
-            mock_client.collections.get.return_value = mock_collection
-            mock_collection.batch.dynamic.return_value = mock_batch_context
-            mock_batch_context.__enter__.return_value = mock_batch
-            mock_batch.failed_objects = []  # Add this line
-            mock_batch.failed_references = []  # Add this line
-            mock_connect.return_value = mock_client
-
-            db = WeaviateVectorDatabase()
-
-            documents = [
-                {
-                    "url": "http://test1.com",
-                    "text": "test content 1",
-                    "metadata": {"type": "webpage"},
-                },
-                {
-                    "url": "http://test2.com",
-                    "text": "test content 2",
-                    "metadata": {"type": "webpage"},
-                },
-            ]
-
-            await db.write_documents(documents, embedding="default")
-
-            # Verify batch.add_object was called for each document
-            assert mock_batch.add_object.call_count == 2
-
-    @pytest.mark.asyncio
-    async def test_write_documents_custom_embedding(self) -> None:
-        """Test writing documents to Weaviate with custom embedding."""
-        with (
-            patch("weaviate.use_async_with_weaviate_cloud") as mock_connect,
-            patch("weaviate.classes.config.Configure") as mock_configure,
-            patch("weaviate.classes.config.Property") as mock_property,
-            patch("weaviate.classes.config.DataType") as mock_datatype,
-            patch.dict(
-                os.environ,
-                {
-                    "WEAVIATE_API_KEY": "test-key",
-                    "WEAVIATE_URL": "https://test.weaviate.network",
-                },
-            ),
-        ):
-            mock_client = AsyncMock()
-            mock_collection = AsyncMock()
-            mock_batch = MagicMock()
-            mock_batch_context = AsyncMock()
-
-            mock_client.collections.exists = AsyncMock(return_value=False)
-            mock_client.collections.get.return_value = mock_collection
-            mock_collection.batch.dynamic.return_value = mock_batch_context
-            mock_batch_context.__enter__.return_value = mock_batch
-            mock_batch.failed_objects = []  # Add this line
-            mock_batch.failed_references = []  # Add this line
-            mock_connect.return_value = mock_client
-
-            # Mock the configuration objects
-            mock_configure.Vectorizer.text2vec_openai.return_value = (
-                "openai_vectorizer_config"
-            )
-            mock_property.return_value = "property"
-            mock_datatype.TEXT = "TEXT"
-
-            db = WeaviateVectorDatabase()
-
-            documents = [
-                {
-                    "url": "http://test1.com",
-                    "text": "test content 1",
-                    "metadata": {"type": "webpage"},
-                }
-            ]
-
-            await db.write_documents(documents, embedding="text-embedding-ada-002")
-
-            # Verify collection was created and batch.add_object was called
-            mock_client.collections.create.assert_called_once()
-            assert mock_batch.add_object.call_count == 1
-
-    # per-document embedding isn't consistent with vector search - removed (api kept for compatibility)
-    @pytest.mark.asyncio
-    async def test_write_documents_ignores_per_write_embedding_with_warning(
-        self,
-    ) -> None:
-        """When collection embedding is set, per-write embedding should be ignored and warn (Weaviate)."""
-        with (
-            patch("weaviate.use_async_with_weaviate_cloud") as mock_connect,
-            patch.dict(
-                os.environ,
-                {
-                    "WEAVIATE_API_KEY": "test-key",
-                    "WEAVIATE_URL": "https://test.weaviate.network",
-                },
-            ),
-        ):
-            mock_client = AsyncMock()
-            mock_collection = AsyncMock()
-            mock_batch = MagicMock()
-            mock_batch_context = AsyncMock()
-
-            mock_client.collections.exists = AsyncMock(return_value=True)
-            mock_client.collections.get.return_value = mock_collection
-            mock_collection.batch.dynamic.return_value = mock_batch_context
-            mock_batch_context.__enter__.return_value = mock_batch
-            mock_batch.failed_objects = []  # Add this line
-            mock_batch.failed_references = []  # Add this line
-            mock_connect.return_value = mock_client
-
-            db = WeaviateVectorDatabase()
-            # Simulate prior setup setting embedding model
-            db.embedding_model = "text-embedding-3-small"
-
-            docs = [{"url": "u", "text": "abc", "metadata": {}}]
-            with warnings.catch_warnings(record=True) as w:
-                warnings.simplefilter("always")
-                await db.write_documents(docs, embedding="text-embedding-ada-002")
-                assert any("per-collection" in str(x.message) for x in w)
-
-    @pytest.mark.asyncio
-    async def test_write_documents_unsupported_embedding(self) -> None:
-        """Test writing documents with unsupported embedding."""
-        with (
-            patch("weaviate.use_async_with_weaviate_cloud") as mock_connect,
-            patch.dict(
-                os.environ,
-                {
-                    "WEAVIATE_API_KEY": "test-key",
-                    "WEAVIATE_URL": "https://test.weaviate.network",
-                },
-            ),
-        ):
-            mock_client = MagicMock()
-            mock_connect.return_value = mock_client
-
-            db = WeaviateVectorDatabase()
-            documents = [
-                {
-                    "url": "http://test1.com",
-                    "text": "test content 1",
-                    "metadata": {"type": "webpage"},
-                }
-            ]
-            with pytest.raises(ValueError, match="Unsupported embedding"):
-                await db.write_documents(documents, embedding="unsupported-model")
+    # Tests removed: Per-write embedding parameter no longer exists in Phase 2 refactoring
+    # - test_write_documents_default_embedding: Embedding now set during setup()
+    # - test_write_documents_custom_embedding: Custom embedding set during setup()
+    # - test_write_documents_ignores_per_write_embedding_with_warning: No per-write param
+    # - test_write_documents_unsupported_embedding: Validation now in setup()
 
     @pytest.mark.asyncio
     async def test_list_documents(self) -> None:

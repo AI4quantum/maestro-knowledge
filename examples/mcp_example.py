@@ -13,12 +13,12 @@ from pathlib import Path
 # Add the parent directory to the path so we can import our modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.maestro_mcp.server import create_mcp_server
 from src.db.vector_db_factory import create_vector_database
+from src.maestro_mcp.server import create_mcp_server
 
 
 def demonstrate_mcp_server() -> None:
-    """Demonstrate the MCP server functionality."""
+    """Demonstrate the MCP server functionality with the new 3-step workflow."""
     print("Maestro Vector Database MCP Server Example")
     print("=" * 50)
 
@@ -30,8 +30,9 @@ def demonstrate_mcp_server() -> None:
     # Show what tools are available
     print("\n2. Available tools in the MCP server:")
     expected_tools = [
-        "create_vector_database",
-        "setup_database",
+        "register_database",  # Step 1: Register database instance
+        "setup_database",  # Step 2: Initialize connection
+        "create_collection",  # Step 3: Create collections
         "get_supported_embeddings",
         "write_documents",
         "write_document",
@@ -48,6 +49,13 @@ def demonstrate_mcp_server() -> None:
         print(f"   - {tool}")
 
     print(f"\n✓ Total tools available: {len(expected_tools)}")
+
+    # Demonstrate the 3-step workflow
+    print("\n3. Typical workflow for setting up a vector database:")
+    print("   Step 1: register_database() - Register database instance")
+    print("   Step 2: setup_database() - Initialize connection")
+    print("   Step 3: create_collection() - Create collections")
+    print("   Then: Use write_documents(), query(), search(), etc.")
 
     # Demonstrate direct vector database usage (what the MCP server does internally)
     print("\n3. Demonstrating vector database operations with embedding strategies:")

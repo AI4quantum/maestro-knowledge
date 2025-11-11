@@ -140,25 +140,37 @@ class WeaviateVectorDatabase(VectorDatabase):
     async def setup(
         self,
         embedding: str = "default",
-        collection_name: str = None,
-        chunking_config: dict[str, Any] = None,
     ) -> None:
         """
-        Set up Weaviate collection if it doesn't exist.
+        Initialize the Weaviate database connection.
+
+        This method only sets up the database client connection.
+        Collections must be created explicitly using create_collection().
 
         Args:
+            embedding: Default embedding model to use (stored for reference)
+        """
+        # Store the default embedding model
+        self.embedding_model = embedding
+
+        # Ensure client is connected
+        await self.client.connect()
+
+    async def create_collection(
+        self,
+        collection_name: str,
+        embedding: str = "default",
+        chunking_config: dict[str, Any] | None = None,
+    ) -> None:
+        """
+        Create a new collection in Weaviate.
+
+        Args:
+            collection_name: Name of the collection to create
             embedding: Embedding model to use for the collection
-            collection_name: Name of the collection to set up (defaults to self.collection_name)
+            chunking_config: Configuration for the chunking strategy
         """
         from weaviate.classes.config import DataType, Property
-
-        # Use the specified collection name or fall back to the default
-        target_collection = (
-            collection_name if collection_name is not None else self.collection_name
-        )
-
-        # Store the embedding model
-        self.embedding_model = embedding
 
         # Track collection metadata including chunking
         if not hasattr(self, "_collections_metadata"):
@@ -167,81 +179,75 @@ class WeaviateVectorDatabase(VectorDatabase):
             "embedding": embedding,
             "chunking": chunking_config or {"strategy": "None", "parameters": {}},
         }
-        self._collections_metadata[target_collection] = target_meta
-        await self.client.connect()
-        if not await self.client.collections.exists(target_collection):
-            vectorizer_config = self._get_vectorizer_config(embedding)
+        self._collections_metadata[collection_name] = target_meta
 
-            await self.client.collections.create(
-                target_collection,
-                description="A dataset with the contents of Maestro Knowledge docs and website",
-                vectorizer_config=vectorizer_config,
-                properties=[
-                    Property(
-                        name="url",
-                        data_type=DataType.TEXT,
-                        description="the source URL of the webpage",
-                    ),
-                    Property(
-                        name="text",
-                        data_type=DataType.TEXT,
-                        description="the content of the webpage",
-                    ),
-                    Property(
-                        name="metadata",
-                        data_type=DataType.TEXT,
-                        description="additional metadata in JSON format",
-                    ),
-                ],
-            )
-            # Optionally store meta in client if supported
-            try:
-                if hasattr(self.client.collections, "set_metadata"):
-                    await self.client.collections.set_metadata(
-                        target_collection, self._collections_metadata[target_collection]
-                    )
-            except Exception:
-                pass
+        await self.client.connect()
+
+        # Check if collection already exists
+        if await self.client.collections.exists(collection_name):
+            return  # Collection already exists
+
+        vectorizer_config = self._get_vectorizer_config(embedding)
+
+        await self.client.collections.create(
+            collection_name,
+            description="A dataset with the contents of Maestro Knowledge docs and website",
+            vectorizer_config=vectorizer_config,
+            properties=[
+                Property(
+                    name="url",
+                    data_type=DataType.TEXT,
+                    description="the source URL of the webpage",
+                ),
+                Property(
+                    name="text",
+                    data_type=DataType.TEXT,
+                    description="the content of the webpage",
+                ),
+                Property(
+                    name="metadata",
+                    data_type=DataType.TEXT,
+                    description="additional metadata in JSON format",
+                ),
+            ],
+        )
+
+        # Optionally store meta in client if supported
+        try:
+            if hasattr(self.client.collections, "set_metadata"):
+                await self.client.collections.set_metadata(
+                    collection_name, self._collections_metadata[collection_name]
+                )
+        except Exception:
+            pass
 
     async def write_documents(
         self,
         documents: list[dict[str, Any]],
-        embedding: str = "default",
-        collection_name: str = None,
+        collection_name: str | None = None,
     ) -> dict[str, Any]:
-        # TODO(embedding): Per-write 'embedding' parameter is deprecated. Collection-level embedding
-        #                  set via setup() should be used. This parameter will be removed or ignored in a future release.
         """
         Write documents to Weaviate.
 
         Args:
             documents: List of documents with 'url', 'text', and 'metadata' fields
-            embedding: Embedding strategy to use:
-                      - "default": Use Weaviate's default text2vec-weaviate
-                      - Specific model name: Use the specified embedding model
             collection_name: Name of the collection to write to (defaults to self.collection_name)
+
+        Note:
+            Embedding model is configured at collection creation time via setup().
+            Each chunk will automatically include embedding_model metadata.
         """
         # Use the specified collection name or fall back to the default
         target_collection = (
             collection_name if collection_name is not None else self.collection_name
         )
 
-        # Validate embedding parameter but prefer collection-level embedding
-        if embedding not in self.supported_embeddings():
-            raise ValueError(
-                f"Unsupported embedding: {embedding}. Supported: {self.supported_embeddings()}"
-            )
-
-        # Ensure collection exists with the correct embedding configuration
+        # Ensure collection exists (will use collection-level embedding)
         if not await self.client.collections.exists(target_collection):
-            await self.setup(embedding, target_collection)
-
-        # If the collection has an embedding set and the caller provided a different one,
-        # ignore the per-write parameter and warn (deprecation path).
-        if self.embedding_model and embedding not in ("default", self.embedding_model):
-            warnings.warn(
-                "Embedding model should be configured per-collection. The per-write 'embedding' parameter is ignored.",
-                stacklevel=2,
+            # Collection should be created via setup() or create_collection() first
+            raise ValueError(
+                f"Collection '{target_collection}' does not exist. "
+                f"Create it first using setup_database or create_collection."
             )
 
         collection = await self.client.collections.get(target_collection)
@@ -363,7 +369,6 @@ class WeaviateVectorDatabase(VectorDatabase):
         self,
         documents: list[dict[str, Any]],
         collection_name: str,
-        embedding: str = "default",
     ) -> dict[str, Any]:
         """
         Write documents to a specific collection in Weaviate.
@@ -371,11 +376,11 @@ class WeaviateVectorDatabase(VectorDatabase):
         Args:
             documents: List of documents with 'url', 'text', and 'metadata' fields
             collection_name: Name of the collection to write to
-            embedding: Embedding strategy to use:
-                      - "default": Use Weaviate's default text2vec-weaviate
-                      - Specific model name: Use the specified embedding model
+
+        Note:
+            Embedding model is configured at collection creation time.
         """
-        return await self.write_documents(documents, embedding, collection_name)
+        return await self.write_documents(documents, collection_name)
 
     async def list_documents(
         self, limit: int = 10, offset: int = 0
@@ -466,7 +471,7 @@ class WeaviateVectorDatabase(VectorDatabase):
             return 0
 
     async def get_document(
-        self, doc_name: str, collection_name: str = None
+        self, doc_name: str, collection_name: str | None = None
     ) -> dict[str, Any]:
         """Reassemble a document from its chunks by doc_name."""
         target_collection = collection_name or self.collection_name
@@ -510,7 +515,7 @@ class WeaviateVectorDatabase(VectorDatabase):
         return doc
 
     async def get_document_chunks(
-        self, doc_id: str, collection_name: str = None
+        self, doc_id: str, collection_name: str | None = None
     ) -> list[dict[str, Any]]:
         target_collection = collection_name or self.collection_name
         collection = await self.client.collections.get(target_collection)
@@ -580,7 +585,9 @@ class WeaviateVectorDatabase(VectorDatabase):
             warnings.warn(f"Could not list collections from Weaviate: {e}")
             return []
 
-    async def get_collection_info(self, collection_name: str = None) -> dict[str, Any]:
+    async def get_collection_info(
+        self, collection_name: str | None = None
+    ) -> dict[str, Any]:
         """Get detailed information about a collection."""
         target_collection = collection_name or self.collection_name
 
@@ -795,7 +802,7 @@ class WeaviateVectorDatabase(VectorDatabase):
             except Exception as e:
                 warnings.warn(f"Failed to delete document {doc_id}: {e}")
 
-    async def delete_collection(self, collection_name: str = None) -> None:
+    async def delete_collection(self, collection_name: str | None = None) -> None:
         """Delete an entire collection from Weaviate."""
         target_collection = collection_name or self.collection_name
 
@@ -816,7 +823,7 @@ class WeaviateVectorDatabase(VectorDatabase):
         return QueryAgent(client=self.client, collections=[self.collection_name])
 
     async def query(
-        self, query: str, limit: int = 5, collection_name: str = None
+        self, query: str, limit: int = 5, collection_name: str | None = None
     ) -> str:
         """
         Query the vector database using Weaviate's vector similarity search.
@@ -854,7 +861,7 @@ class WeaviateVectorDatabase(VectorDatabase):
             return f"Error querying database: {str(e)}"
 
     async def search(
-        self, query: str, limit: int = 5, collection_name: str = None
+        self, query: str, limit: int = 5, collection_name: str | None = None
     ) -> list[dict[str, Any]]:
         """
         Search for documents using Weaviate's vector similarity search.
@@ -993,7 +1000,7 @@ class WeaviateVectorDatabase(VectorDatabase):
             return await self._fallback_keyword_search(query, limit, collection_name)
 
     async def _fallback_keyword_search(
-        self, query: str, limit: int = 5, collection_name: str = None
+        self, query: str, limit: int = 5, collection_name: str | None = None
     ) -> list[dict[str, Any]]:
         """
         Fallback to simple keyword matching if vector search fails.

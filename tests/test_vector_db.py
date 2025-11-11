@@ -24,17 +24,17 @@ warnings.filterwarnings(
     "ignore", category=UserWarning, message=".*Milvus client is not available.*"
 )
 
-import sys
 import os
+import sys
 
 # Add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import from the new modular structure
 from src.db.vector_db_base import VectorDatabase
-from src.db.vector_db_weaviate import WeaviateVectorDatabase
-from src.db.vector_db_milvus import MilvusVectorDatabase
 from src.db.vector_db_factory import create_vector_database
+from src.db.vector_db_milvus import MilvusVectorDatabase
+from src.db.vector_db_weaviate import WeaviateVectorDatabase
 
 # This file now serves as a compatibility layer and re-exports the tests
 # The actual test implementations are in the separate test files:

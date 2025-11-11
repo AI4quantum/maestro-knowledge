@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache 2.0
 # Copyright (c) 2025 IBM
 
-import os
 import asyncio
+import os
 
 
 def is_milvus_running() -> bool:

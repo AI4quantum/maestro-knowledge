@@ -15,10 +15,10 @@ import os
 import subprocess
 import sys
 import time
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-import pytest
 import httpx
+import pytest
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator

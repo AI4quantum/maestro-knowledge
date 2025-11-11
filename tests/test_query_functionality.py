@@ -2,9 +2,10 @@
 # Copyright (c) 2025 IBM
 
 import warnings
-import pytest
-from unittest.mock import Mock, MagicMock
 from typing import Any
+from unittest.mock import MagicMock, Mock
+
+import pytest
 
 # Suppress Pydantic deprecation warnings from dependencies
 warnings.filterwarnings(
@@ -19,8 +20,8 @@ warnings.filterwarnings(
     message=".*Support for class-based `config`.*",
 )
 
-import sys
 import os
+import sys
 
 # Add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

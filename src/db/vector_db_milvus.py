@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache 2.0
 # Copyright (c) 2025 IBM
 
-import json
 import asyncio
+import json
 import logging
 import os
 import time
@@ -245,12 +245,19 @@ class MilvusVectorDatabase(VectorDatabase):
     async def setup(
         self,
         embedding: str = "default",
-        collection_name: str = None,
-        chunking_config: dict[str, Any] = None,
     ) -> None:
-        """Set up Milvus collection if it doesn't exist."""
+        """
+        Initialize the Milvus database connection.
 
+        This method only sets up the database client connection.
+        Collections must be created explicitly using create_collection().
+
+        Args:
+            embedding: Default embedding model to use (stored for reference)
+        """
         self._ensure_client()
+
+        # Validate custom_local embedding configuration if specified
         if embedding == "custom_local":
             custom_url = os.getenv("CUSTOM_EMBEDDING_URL")
             custom_model = os.getenv("CUSTOM_EMBEDDING_MODEL")
@@ -272,85 +279,117 @@ class MilvusVectorDatabase(VectorDatabase):
                 int(custom_vectorsize)
             except ValueError:
                 raise ValueError("CUSTOM_EMBEDDING_VECTORSIZE must be a valid integer.")
+
         if self.client is None:
             warnings.warn("Milvus client is not available. Setup skipped.")
             return
 
-        # Use the specified collection name or fall back to the default
-        target_collection = (
-            collection_name if collection_name is not None else self.collection_name
-        )
-
-        # Store the embedding model
+        # Store the default embedding model for reference
         self.embedding_model = embedding
 
+    async def create_collection(
+        self,
+        collection_name: str,
+        embedding: str = "default",
+        chunking_config: dict[str, Any] | None = None,
+    ) -> None:
+        """
+        Create a new collection in Milvus.
+
+        Args:
+            collection_name: Name of the collection to create
+            embedding: Embedding model to use for the collection
+            chunking_config: Configuration for the chunking strategy
+        """
+        self._ensure_client()
+
+        if self.client is None:
+            raise RuntimeError("Milvus client is not available")
+
+        # Validate custom_local embedding configuration if specified
+        if embedding == "custom_local":
+            custom_url = os.getenv("CUSTOM_EMBEDDING_URL")
+            custom_model = os.getenv("CUSTOM_EMBEDDING_MODEL")
+            custom_vectorsize = os.getenv("CUSTOM_EMBEDDING_VECTORSIZE")
+
+            if not custom_url:
+                raise ValueError(
+                    "CUSTOM_EMBEDDING_URL must be set for 'custom_local' embedding."
+                )
+            if not custom_model:
+                raise ValueError(
+                    "CUSTOM_EMBEDDING_MODEL must be set for 'custom_local' embedding."
+                )
+            if not custom_vectorsize:
+                raise ValueError(
+                    "CUSTOM_EMBEDDING_VECTORSIZE must be set for 'custom_local' embedding."
+                )
+            try:
+                int(custom_vectorsize)
+            except ValueError:
+                raise ValueError("CUSTOM_EMBEDDING_VECTORSIZE must be a valid integer.")
+
         # Save chunking config for collection-level metadata
-        self._collections_metadata[target_collection] = {
+        self._collections_metadata[collection_name] = {
             "embedding": embedding,
             "vector_size": None,  # filled below
             "chunking": chunking_config or {"strategy": "None", "parameters": {}},
         }
 
         # Determine dimension based on embedding model
-        self.dimension = self._get_embedding_dimension(embedding)
+        dimension = self._get_embedding_dimension(embedding)
         # update stored vector_size
-        self._collections_metadata[target_collection]["vector_size"] = self.dimension
+        self._collections_metadata[collection_name]["vector_size"] = dimension
 
-        # Create collection if it doesn't exist
-
-        collection_exists = await self.client.has_collection(target_collection)
+        # Check if collection already exists
+        collection_exists = await self.client.has_collection(collection_name)
 
         if collection_exists:
             try:
-                # Use the target collection (not the object's default) when describing
-                info = await self.client.describe_collection(target_collection)
+                info = await self.client.describe_collection(collection_name)
                 for field in info.get("fields", []):
                     if field.get("name") == "vector":
                         existing_dim = field.get("params", {}).get("dim")
-                        if existing_dim != self.dimension:
+                        if existing_dim != dimension:
                             raise ValueError(
-                                f"Dimension mismatch: existing={existing_dim}, requested={self.dimension}"
+                                f"Collection '{collection_name}' already exists with dimension {existing_dim}, "
+                                f"but requested dimension is {dimension}"
                             )
+                # Collection exists with correct dimension
+                return
             except Exception as e:
-                warnings.warn(
-                    f"[Milvus setup] Could not describe existing collection: {e}"
-                )
-                # Helpful debug output to indicate which embedding model is configured
-                print(f"Using embedding model: {self.embedding_model}")
+                if "already exists" not in str(e).lower():
+                    raise
 
-        if not collection_exists:
-            await self.client.create_collection(
-                collection_name=target_collection,
-                dimension=self.dimension,  # Vector dimension
-                primary_field_name="id",
-                vector_field_name="vector",
-            )
-            # Optionally store collection metadata about embedding and chunking
-            try:
-                # Some Milvus clients support setting collection description/metadata - attempt where available
-                if hasattr(self.client, "set_collection_metadata"):
-                    meta = {
-                        "embedding": self.embedding_model,
-                        "vector_size": self.dimension,
-                        "chunking": self._collections_metadata.get(
-                            target_collection, {}
-                        ).get("chunking"),
-                    }
-                    try:
-                        await self.client.set_collection_metadata(
-                            target_collection, meta
-                        )
-                    except Exception:
-                        # not critical; ignore if client doesn't support
-                        pass
-            except Exception:
-                pass
+        # Create collection
+        await self.client.create_collection(
+            collection_name=collection_name,
+            dimension=dimension,
+            primary_field_name="id",
+            vector_field_name="vector",
+        )
+
+        # Optionally store collection metadata about embedding and chunking
+        try:
+            if hasattr(self.client, "set_collection_metadata"):
+                meta = {
+                    "embedding": embedding,
+                    "vector_size": dimension,
+                    "chunking": self._collections_metadata.get(collection_name, {}).get(
+                        "chunking"
+                    ),
+                }
+                try:
+                    await self.client.set_collection_metadata(collection_name, meta)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     async def write_documents(
         self,
         documents: list[dict[str, Any]],
-        embedding: str = "default",
-        collection_name: str = None,
+        collection_name: str | None = None,
     ) -> dict[str, Any]:
         """
         Write documents to Milvus.
@@ -358,10 +397,11 @@ class MilvusVectorDatabase(VectorDatabase):
         Args:
             documents: List of documents with 'url', 'text', and 'metadata' fields.
                       Documents may also include a 'vector' field for pre-computed embeddings.
-            embedding: Embedding strategy to use:
-                      - "default": Use pre-computed vector if available, otherwise use text-embedding-ada-002
-                      - Specific model name: Use the specified embedding model to generate vectors
             collection_name: Name of the collection to write to (defaults to self.collection_name)
+
+        Note:
+            Embedding model is configured at collection creation time via setup().
+            Each chunk will automatically include embedding_model metadata.
         """
         self._ensure_client()
         if self.client is None:
@@ -373,26 +413,8 @@ class MilvusVectorDatabase(VectorDatabase):
             collection_name if collection_name is not None else self.collection_name
         )
 
-        # TODO(embedding): Per-write 'embedding' is deprecated; prefer collection-level embedding set in setup().
-        #                  In a future release, remove the per-write parameter or make it a no-op.
-        # Determine effective embedding model: prefer collection-level embedding if set
-        all_supported = self.supported_embeddings()
-        if embedding not in all_supported:
-            raise ValueError(
-                f"Unsupported embedding: {embedding}. Supported: {all_supported}"
-            )
-
-        effective_embedding = self.embedding_model or (
-            None if embedding == "default" else embedding
-        )
-
-        # If collection-level embedding is set and differs from the provided one,
-        # ignore the per-write parameter and emit a deprecation warning.
-        if self.embedding_model and embedding not in ("default", self.embedding_model):
-            warnings.warn(
-                "Embedding model should be configured per-collection. The per-write 'embedding' parameter is ignored.",
-                stacklevel=2,
-            )
+        # Use collection-level embedding model (set during setup)
+        effective_embedding = self.embedding_model
 
         # Chunk documents according to collection chunking config and insert each chunk as a record
         coll_meta = getattr(self, "_collections_metadata", {}).get(
@@ -568,7 +590,7 @@ class MilvusVectorDatabase(VectorDatabase):
         }
 
     async def get_document_chunks(
-        self, doc_id: str, collection_name: str = None
+        self, doc_id: str, collection_name: str | None = None
     ) -> list[dict[str, Any]]:
         """Retrieve all chunks for a specific document by doc_name."""
         self._ensure_client()
@@ -606,7 +628,7 @@ class MilvusVectorDatabase(VectorDatabase):
             raise ValueError(f"Failed to retrieve chunks for document '{doc_id}': {e}")
 
     async def get_document(
-        self, doc_name: str, collection_name: str = None
+        self, doc_name: str, collection_name: str | None = None
     ) -> dict[str, Any]:
         """Reassemble a document from its chunks by doc_name."""
         # Ensure client is available
@@ -768,7 +790,9 @@ class MilvusVectorDatabase(VectorDatabase):
             )
             return 0
 
-    async def get_collection_info(self, collection_name: str = None) -> dict[str, Any]:
+    async def get_collection_info(
+        self, collection_name: str | None = None
+    ) -> dict[str, Any]:
         """Get detailed information about a collection."""
         self._ensure_client()
         if self.client is None:
@@ -1072,7 +1096,7 @@ class MilvusVectorDatabase(VectorDatabase):
             # Re-raise the exception to be handled by the caller
             raise e
 
-    async def delete_collection(self, collection_name: str = None) -> None:
+    async def delete_collection(self, collection_name: str | None = None) -> None:
         """Delete an entire collection from Milvus."""
         self._ensure_client()
         if self.client is None:
@@ -1094,7 +1118,7 @@ class MilvusVectorDatabase(VectorDatabase):
         return self
 
     async def query(
-        self, query: str, limit: int = 5, collection_name: str = None
+        self, query: str, limit: int = 5, collection_name: str | None = None
     ) -> str:
         """
         Query the vector database using Milvus vector similarity search.
@@ -1137,7 +1161,7 @@ class MilvusVectorDatabase(VectorDatabase):
             return f"Error querying database: {str(e)}"
 
     async def _search_documents(
-        self, query: str, limit: int = 5, collection_name: str = None
+        self, query: str, limit: int = 5, collection_name: str | None = None
     ) -> list[dict[str, Any]]:
         """
         Search for documents using vector similarity search.
@@ -1404,7 +1428,7 @@ class MilvusVectorDatabase(VectorDatabase):
             return await self._fallback_keyword_search(query, limit)
 
     async def search(
-        self, query: str, limit: int = 5, collection_name: str = None
+        self, query: str, limit: int = 5, collection_name: str | None = None
     ) -> list[dict[str, Any]]:
         """
         Public search method required by the abstract base class. Delegates

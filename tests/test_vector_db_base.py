@@ -16,11 +16,12 @@ warnings.filterwarnings(
     message=".*Support for class-based `config`.*",
 )
 
-import sys
-import os
-import pytest
 import asyncio
+import os
+import sys
 from typing import Any
+
+import pytest
 
 # Add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -45,6 +46,7 @@ class ConcreteVectorDatabase(VectorDatabase):
         super().__init__(collection_name)
         self.documents = []
         self.next_id = 0
+        self.embedding_model = "default"
 
     @property
     def db_type(self) -> str:
@@ -54,18 +56,19 @@ class ConcreteVectorDatabase(VectorDatabase):
         return ["default", "test-embedding"]
 
     def setup(self, embedding: str = "default", collection_name: str = None) -> None:
-        pass
+        self.embedding_model = embedding
+        if collection_name:
+            self.collection_name = collection_name
 
     async def write_documents(
         self,
         documents: list[dict[str, Any]],
-        embedding: str = "default",
         collection_name: str = None,
     ) -> None:
         for doc in documents:
             doc_copy = doc.copy()
             doc_copy["id"] = str(self.next_id)
-            doc_copy["embedding_used"] = embedding
+            doc_copy["embedding_used"] = self.embedding_model
             self.documents.append(doc_copy)
             self.next_id += 1
 
@@ -156,6 +159,7 @@ class TestConcreteVectorDatabase:
     async def test_write_document_singular(self) -> None:
         """Test the singular write_document method."""
         db = ConcreteVectorDatabase()
+        db.setup(embedding="default")
         doc = {"url": "test.com", "text": "test", "metadata": {"key": "value"}}
 
         await db.write_document(doc)
@@ -165,24 +169,26 @@ class TestConcreteVectorDatabase:
 
     @pytest.mark.asyncio
     async def test_write_document_with_embedding(self) -> None:
-        """Test the write_document method with custom embedding."""
+        """Test the write_document method uses embedding from setup."""
         db = ConcreteVectorDatabase()
+        db.setup(embedding="test-embedding")
         doc = {"url": "test.com", "text": "test", "metadata": {"key": "value"}}
 
-        await db.write_document(doc, embedding="test-embedding")
+        await db.write_document(doc)
         assert len(db.documents) == 1
         assert db.documents[0]["embedding_used"] == "test-embedding"
 
     @pytest.mark.asyncio
     async def test_write_documents_with_embedding(self) -> None:
-        """Test the write_documents method with custom embedding."""
+        """Test the write_documents method uses embedding from setup."""
         db = ConcreteVectorDatabase()
+        db.setup(embedding="test-embedding")
         docs = [
             {"url": "test1.com", "text": "test1", "metadata": {}},
             {"url": "test2.com", "text": "test2", "metadata": {}},
         ]
 
-        await db.write_documents(docs, embedding="test-embedding")
+        await db.write_documents(docs)
         assert len(db.documents) == 2
         assert all(doc["embedding_used"] == "test-embedding" for doc in db.documents)
 

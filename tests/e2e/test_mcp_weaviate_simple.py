@@ -26,13 +26,13 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # Only for type checkers; no runtime import
     from collections.abc import AsyncGenerator
 
-import pytest
 import httpx
+import pytest
 
 pytestmark = [pytest.mark.e2e, pytest.mark.requires_weaviate]
 
@@ -143,7 +143,7 @@ async def test_weaviate_database_management(mcp_http_server: dict[str, Any]) -> 
 
         # Create vector DB
         res = await client.call_tool(
-            "create_vector_database_tool",
+            "register_database",
             {
                 "input": {
                     "db_name": db_name,
@@ -211,7 +211,7 @@ async def test_weaviate_configuration_discovery(
 
             # Create a test database first
             res = await client.call_tool(
-                "create_vector_database_tool",
+                "register_database",
                 {
                     "input": {
                         "db_name": db_name,

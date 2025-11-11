@@ -10,8 +10,8 @@ This example demonstrates:
 5. Cleanup
 """
 
-import os
 import json
+import os
 from typing import Any
 
 # Set environment variables for Milvus (optional - these are the defaults)
@@ -19,8 +19,8 @@ os.environ.setdefault("VECTOR_DB_TYPE", "milvus")
 os.environ.setdefault("MILVUS_URI", "http://localhost:19530")
 
 # Add the project root to the Python path
-import sys
 import os
+import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

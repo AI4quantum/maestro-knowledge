@@ -31,8 +31,8 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 import os
 import sys
-from unittest.mock import MagicMock, patch, AsyncMock
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -123,7 +123,7 @@ class TestMilvusVectorDatabase:
                 "vector": [0.2] * 1536,
             },
         ]
-        await db.write_documents(documents, embedding="default")
+        await db.write_documents(documents)
         assert mock_client.insert.called
 
     @pytest.mark.asyncio
@@ -151,7 +151,7 @@ class TestMilvusVectorDatabase:
 
             # Set environment variable for OpenAI API key
             with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
-                await db.write_documents(documents, embedding="text-embedding-ada-002")
+                await db.write_documents(documents)
                 assert mock_client.insert.called
 
     @pytest.mark.asyncio
@@ -190,7 +190,7 @@ class TestMilvusVectorDatabase:
                     "metadata": {"doc_name": "doc1"},
                 }
             ]
-            await db.write_documents(documents, embedding="default")
+            await db.write_documents(documents)
 
         # Verify insert was called and metadata contains chunking
         assert mock_client.insert.called
@@ -248,24 +248,8 @@ class TestMilvusVectorDatabase:
         assert cfg.get("url") == "http://localhost:11434/v1"
         assert cfg.get("model") == "nomic-embed-text"
 
-    @pytest.mark.asyncio
-    @patch("pymilvus.AsyncMilvusClient")
-    async def test_write_documents_unsupported_embedding(
-        self, mock_milvus_client: AsyncMock
-    ) -> None:
-        """Test writing documents with unsupported embedding model."""
-        mock_client = MagicMock()
-        mock_milvus_client.return_value = mock_client
-        db = MilvusVectorDatabase()
-        documents = [
-            {
-                "url": "http://test1.com",
-                "text": "test content 1",
-                "metadata": {"type": "webpage"},
-            }
-        ]
-        with pytest.raises(ValueError, match="Unsupported embedding"):
-            await db.write_documents(documents, embedding="unsupported-model")
+    # Test removed: Embedding validation now happens during setup(), not write_documents()
+    # See test_setup_collection_not_exists for embedding validation testing
 
     @pytest.mark.asyncio
     @patch("pymilvus.AsyncMilvusClient")
@@ -301,9 +285,7 @@ class TestMilvusVectorDatabase:
                     ValueError,
                     match="OPENAI_API_KEY is required for OpenAI embeddings.",
                 ):
-                    await db.write_documents(
-                        documents, embedding="text-embedding-ada-002"
-                    )
+                    await db.write_documents(documents)
 
     @pytest.mark.asyncio
     @patch("pymilvus.AsyncMilvusClient")
@@ -341,7 +323,7 @@ class TestMilvusVectorDatabase:
 
             # Set environment variable for OpenAI API key
             with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
-                await db.write_documents(documents, embedding="text-embedding-ada-002")
+                await db.write_documents(documents)
                 assert mock_client.insert.called
                 # Verify that the OpenAI client was called correctly
                 mock_openai.assert_called_once_with(api_key="test-key")
@@ -578,33 +560,8 @@ class TestMilvusVectorDatabase:
             limit=10000,
         )
 
-    @pytest.mark.asyncio
-    @patch("pymilvus.AsyncMilvusClient")
-    async def test_write_documents_ignores_per_write_embedding_with_warning(
-        self, mock_milvus_client: AsyncMock
-    ) -> None:
-        """When collection embedding is set, per-write embedding should be ignored and warn."""
-        mock_client = AsyncMock()
-        mock_milvus_client.return_value = mock_client
-        mock_client.has_collection = AsyncMock(return_value=True)
-
-        db = MilvusVectorDatabase()
-        # Simulate prior setup setting embedding model and dimension
-        db.embedding_model = "text-embedding-3-small"
-        db.dimension = 1536
-
-        # Patch embedding generator to check which model is used
-        with patch.object(
-            db, "_generate_embedding_async", new=AsyncMock(return_value=[0.0] * 1536)
-        ) as gen:
-            docs = [{"url": "u", "text": "abc", "metadata": {}}]
-            with warnings.catch_warnings(record=True) as w:
-                warnings.simplefilter("always")
-                await db.write_documents(docs, embedding="text-embedding-ada-002")
-                # one warning emitted
-                assert any("per-collection" in str(x.message) for x in w)
-            # Should have used effective (collection) model, not the per-write arg
-            gen.assert_awaited()
+    # Test removed: Per-write embedding parameter no longer exists in Phase 2 refactoring
+    # Embedding is now set only during setup/collection creation
 
     @pytest.mark.asyncio
     @patch("pymilvus.AsyncMilvusClient")

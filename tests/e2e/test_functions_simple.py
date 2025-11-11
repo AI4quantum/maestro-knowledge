@@ -26,7 +26,7 @@ async def run_database_management_tests(client: "Client", backend_name: str) -> 
 
     # Test create_vector_database_tool
     res = await client.call_tool(
-        "create_vector_database_tool",
+        "register_database",
         {
             "input": {
                 "db_name": db_name,
@@ -85,7 +85,7 @@ async def run_configuration_discovery_tests(
 
     # Create a test database first
     res = await client.call_tool(
-        "create_vector_database_tool",
+        "register_database",
         {
             "input": {
                 "db_name": db_name,
