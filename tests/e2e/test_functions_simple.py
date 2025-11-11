@@ -22,17 +22,15 @@ from tests.e2e.common import get_backend_config, get_db_name_for_test
 async def run_database_management_tests(client: "Client", backend_name: str) -> None:
     """Test database creation, collection management, and list_collections tool."""
     config = get_backend_config(backend_name)
-    db_name = get_db_name_for_test(backend_name, "DB_Management")
+    database = get_db_name_for_test(backend_name, "DB_Management")
 
     # Test create_vector_database_tool
     res = await client.call_tool(
         "register_database",
         {
-            "input": {
-                "db_name": db_name,
-                "db_type": config["db_type"],
-                "collection_name": f"{db_name}_Collection",
-            }
+            "database": database,
+            "database_type": config["db_type"],
+            "collection": f"{database}_Collection",
         },
     )
     assert hasattr(res, "data"), f"create_vector_database_tool failed: {res}"
@@ -41,25 +39,23 @@ async def run_database_management_tests(client: "Client", backend_name: str) -> 
     res = await client.call_tool(
         "create_collection",
         {
-            "input": {
-                "db_name": db_name,
-                "collection_name": f"{db_name}_Collection",
-                "embedding": "default",
-            }
+            "database": database,
+            "collection": f"{database}_Collection",
+            "embedding": "default",
         },
     )
     assert hasattr(res, "data"), f"create_collection failed: {res}"
 
     # Test list_collections
-    res = await client.call_tool("list_collections", {"input": {"db_name": db_name}})
+    res = await client.call_tool("list_collections", {"database": database})
     assert hasattr(res, "data"), f"list_collections failed: {res}"
 
     # Test get_collection_info
-    res = await client.call_tool("get_collection_info", {"input": {"db_name": db_name}})
+    res = await client.call_tool("get_collection_info", {"database": database})
     assert hasattr(res, "data"), f"get_collection_info failed: {res}"
 
     # Cleanup
-    res = await client.call_tool("cleanup", {"input": {"db_name": db_name}})
+    res = await client.call_tool("cleanup", {"database": database})
     assert hasattr(res, "data"), f"cleanup failed: {res}"
 
 
@@ -81,25 +77,21 @@ async def run_configuration_discovery_tests(
 ) -> None:
     """Test configuration discovery operations: get_supported_embeddings, get_supported_chunking_strategies."""
     config = get_backend_config(backend_name)
-    db_name = get_db_name_for_test(backend_name, "Config_Test")
+    database = get_db_name_for_test(backend_name, "Config_Test")
 
     # Create a test database first
     res = await client.call_tool(
         "register_database",
         {
-            "input": {
-                "db_name": db_name,
-                "db_type": config["db_type"],
-                "collection_name": db_name,
-            }
+            "database": database,
+            "database_type": config["db_type"],
+            "collection": database,
         },
     )
     assert hasattr(res, "data")
 
     # Test get_supported_embeddings
-    res = await client.call_tool(
-        "get_supported_embeddings", {"input": {"db_name": db_name}}
-    )
+    res = await client.call_tool("get_supported_embeddings", {"database": database})
     assert hasattr(res, "data")
     # Should contain embedding options (backend-agnostic check)
     assert res.data and len(str(res.data)) > 0, f"No embeddings returned: {res.data}"
@@ -116,5 +108,5 @@ async def run_configuration_discovery_tests(
     )
 
     # Cleanup
-    res = await client.call_tool("cleanup", {"input": {"db_name": db_name}})
+    res = await client.call_tool("cleanup", {"database": database})
     assert hasattr(res, "data")

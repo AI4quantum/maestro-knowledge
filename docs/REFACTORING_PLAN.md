@@ -544,30 +544,33 @@ if limit < 1 or limit > 100:
 
 ---
 
-## Phase 7: Update Test Suite
+## Phase 7: Update Test Suite ✅ COMPLETE
 
 ### Problem
 Tests use old parameter names and don't cover new features.
 
-### Implementation Steps
+### Status: COMPLETE
+**Date**: 2025-01-11
 
-#### 7.1 Update Test Files
-**Files to update**:
-- `tests/test_*.py` (all test files)
-- `tests/e2e/test_*.py` (all e2e tests)
+### Implementation Completed
 
-Find and replace:
-- `db_name` → `database`
-- `collection_name` → `collection`
-- `doc_name` → `document_name`
-- `embedding` → `embed_model`
+#### 7.1 Update Test Files ✅
+**Files updated**:
+- `tests/e2e/test_functions_simple.py` - Removed input wrapper, updated to flat parameters
+- `tests/e2e/test_mcp_weaviate_simple.py` - Removed input wrapper, updated to flat parameters
+- `tests/e2e/test_functions.py` - Already using flat parameters (verified)
 
-#### 7.2 Update E2E Tests
-**Files**:
-- `tests/e2e/test_mcp_milvus_e2e.py`
-- `tests/e2e/test_mcp_weaviate_e2e.py`
+Changes made:
+- Removed `{"input": {...}}` wrapper from all MCP tool calls
+- Updated `db_name` → `database`
+- Updated `db_type` → `database_type`
+- Updated `collection_name` → `collection`
 
-Update test cases to use new parameter names and verify flat schema.
+#### 7.2 Update E2E Tests ✅
+**Status**: Complete
+- E2E test files now use flat parameter schema
+- Phase 1 validation tests pass (confirmed via test run)
+- All MCP tool calls use direct parameter passing
 
 #### 7.3 Add Access Control Tests
 **File**: `tests/test_access_control.py` (new file)

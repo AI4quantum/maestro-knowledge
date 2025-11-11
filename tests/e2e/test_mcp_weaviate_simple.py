@@ -139,17 +139,15 @@ async def test_weaviate_database_management(mcp_http_server: dict[str, Any]) -> 
     base_mcp_url = f"http://{host}:{port}/mcp/"
 
     async with Client(base_mcp_url, timeout=60) as client:
-        db_name = "E2E_Weaviate_DB_Management"
+        database = "E2E_Weaviate_DB_Management"
 
         # Create vector DB
         res = await client.call_tool(
             "register_database",
             {
-                "input": {
-                    "db_name": db_name,
-                    "db_type": "weaviate",  # Only difference from Milvus
-                    "collection_name": db_name,
-                }
+                "database": database,
+                "database_type": "weaviate",  # Only difference from Milvus
+                "collection": database,
             },
         )
         assert hasattr(res, "data")
@@ -159,19 +157,15 @@ async def test_weaviate_database_management(mcp_http_server: dict[str, Any]) -> 
         assert hasattr(res, "data")
 
         # Test get_database_info
-        res = await client.call_tool(
-            "get_database_info", {"input": {"db_name": db_name}}
-        )
+        res = await client.call_tool("get_database_info", {"database": database})
         assert hasattr(res, "data")
 
         # Test list_collections
-        res = await client.call_tool(
-            "list_collections", {"input": {"db_name": db_name}}
-        )
+        res = await client.call_tool("list_collections", {"database": database})
         assert hasattr(res, "data")
 
         # Cleanup
-        res = await client.call_tool("cleanup", {"input": {"db_name": db_name}})
+        res = await client.call_tool("cleanup", {"database": database})
         assert hasattr(res, "data")
 
 
@@ -204,7 +198,7 @@ async def test_weaviate_configuration_discovery(
     base_mcp_url = f"http://{host}:{port}/mcp/"
 
     try:
-        db_name = "E2E_Weaviate_Config_Test"
+        database = "E2E_Weaviate_Config_Test"
 
         async with Client(base_mcp_url, timeout=60) as client:
             print("✓ Testing configuration discovery operations")
@@ -213,11 +207,9 @@ async def test_weaviate_configuration_discovery(
             res = await client.call_tool(
                 "register_database",
                 {
-                    "input": {
-                        "db_name": db_name,
-                        "db_type": "weaviate",  # Only difference from Milvus
-                        "collection_name": db_name,
-                    }
+                    "database": database,
+                    "database_type": "weaviate",  # Only difference from Milvus
+                    "collection": database,
                 },
             )
             assert hasattr(res, "data")
@@ -225,7 +217,7 @@ async def test_weaviate_configuration_discovery(
 
             # Test get_supported_embeddings
             res = await client.call_tool(
-                "get_supported_embeddings", {"input": {"db_name": db_name}}
+                "get_supported_embeddings", {"database": database}
             )
             assert hasattr(res, "data")
             # Backend-agnostic validation - just check we get some response
@@ -247,7 +239,7 @@ async def test_weaviate_configuration_discovery(
             print("✓ Got supported chunking strategies")
 
             # Cleanup
-            res = await client.call_tool("cleanup", {"input": {"db_name": db_name}})
+            res = await client.call_tool("cleanup", {"database": database})
             assert hasattr(res, "data")
             print("✓ Configuration discovery tests completed")
 
