@@ -16,14 +16,14 @@
 | Phase 2 | ✅ COMPLETE | Remove per-write embedding | YES - Embedding architecture |
 | Phase 2.5 | ✅ COMPLETE | Improve embedding docs | NO |
 | Phase 2.6 | ✅ COMPLETE | Separate setup from collection creation | YES - Tool naming & workflow |
-| Phase 3 | 📋 PLANNED | Fix reassembly bug | NO |
-| Phase 4 | 📋 PLANNED | Add ownership metadata | NO |
-| Phase 5 | 📋 PLANNED | Implement access control | NO |
-| Phase 6 | 📋 PLANNED | Add search quality controls | NO |
-| Phase 7 | 📋 PLANNED | Improve citation format | NO |
-| Phase 8 | 📋 PLANNED | Enhance error messages | NO |
-| Phase 9 | 📋 PLANNED | Update test suite | NO |
-| Phase 10 | 📋 PLANNED | Update documentation | NO |
+| Phase 3 | ✅ COMPLETE | Fix reassembly bug | NO - Internal improvement |
+| Phase 4 | 📋 PLANNED | Add search quality controls | NO |
+| Phase 5 | 📋 PLANNED | Improve citation format | NO |
+| Phase 6 | 📋 PLANNED | Enhance error messages | NO |
+| Phase 7 | 📋 PLANNED | Update test suite | NO |
+| Phase 8 | 📋 PLANNED | Update documentation | NO |
+| Phase 9 | 📋 PLANNED | Add ownership metadata | NO |
+| Phase 10 | 📋 PLANNED | Implement access control | NO |
 
 ## Overview
 
@@ -194,6 +194,96 @@ create_collection   → Creates collection
 delete_collection   → Deletes collection
 cleanup             → Closes connection & removes registry entry
 ```
+
+### Phase 3: Fixed Document Reassembly Bug (COMPLETED)
+
+**What Changed:**
+- Fixed critical bug where overlapping text chunks were duplicated during document reassembly
+- Implemented intelligent overlap detection using chunk metadata
+- Added fallback text-based overlap detection when metadata unavailable
+- No API changes - purely internal improvement
+
+**Migration Required:** NO - Automatic improvement, no code changes needed
+
+**Impact:** Documents with overlapping chunks (e.g., using Fixed chunking with `overlap > 0`) will now be correctly reassembled without text duplication.
+
+#### The Problem
+
+When documents were chunked with overlap (common with Fixed chunking strategy), the reassembly process would duplicate the overlapping text:
+
+```python
+# Example with overlap=10
+Chunk 1: "The quick brown fox "
+Chunk 2: "brown fox jumps over"  # "brown fox " overlaps
+
+# Before Phase 3 (BUGGY):
+Result: "The quick brown fox brown fox jumps over"  # ❌ Duplication!
+
+# After Phase 3 (FIXED):
+Result: "The quick brown fox jumps over"  # ✅ Correct!
+```
+
+#### The Solution
+
+The fix uses a two-tier approach:
+
+1. **Primary: Offset-based detection** - Uses `offset_start` and `offset_end` metadata to mathematically calculate overlap
+2. **Fallback: Text-based detection** - Compares text strings when metadata unavailable
+
+#### Benefits for Users
+
+- **Automatic improvement** - No code changes required
+- **Works with all chunking strategies** - Fixed, Sentence, and Semantic
+- **Backward compatible** - Existing code continues to work
+- **Better document quality** - No more duplicated text in retrieved documents
+
+#### Technical Details
+
+The reassembly logic now:
+- Sorts chunks by sequence number
+- Detects overlap using `offset_start`/`offset_end` metadata
+- Skips overlapping portions when concatenating
+- Falls back to text comparison if metadata missing
+- Preserves all non-chunk-specific metadata
+
+#### Example Scenarios
+
+**Scenario 1: Fixed Chunking with Overlap**
+```python
+# Chunking config
+{
+    "strategy": "Fixed",
+    "chunk_size": 512,
+    "overlap": 50  # 50 character overlap
+}
+
+# Before Phase 3: Duplicated 50 characters between each chunk
+# After Phase 3: Clean reassembly with no duplication
+```
+
+**Scenario 2: Sentence Chunking**
+```python
+# Sentence chunking may create natural overlaps
+# Phase 3 handles these correctly regardless of overlap size
+```
+
+**Scenario 3: Missing Metadata**
+```python
+# If offset metadata is missing (legacy data)
+# Falls back to text-based overlap detection
+# Still produces correct results
+```
+
+#### No Action Required
+
+This is a **transparent improvement**. Your existing code will automatically benefit from the fix:
+
+```python
+# Your existing code works unchanged
+doc = await db.get_document("my_document")
+# Now returns correctly reassembled text without duplication
+```
+
 
     "documents": [...]  # Uses collection's embedding model
 })

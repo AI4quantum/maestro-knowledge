@@ -111,26 +111,27 @@ class TestChunkingE2E:
 
         print(f"✓ All {len(chunks)} chunks have correct metadata")
 
-        # Verify chunks can be reassembled
-        reassembled = ""
-        for chunk in sorted(chunks, key=lambda c: c["offset_start"]):
-            # Handle overlap by only taking non-overlapping portions
-            if not reassembled:
-                reassembled = chunk["text"]
-            else:
-                # Find where this chunk's content starts in relation to what we have
-                chunk_text = chunk["text"]
-                # Simple reassembly: append if no overlap, or merge if overlap exists
-                overlap_size = 20  # Known from config
-                if len(reassembled) >= overlap_size:
-                    # Check if there's actual overlap
-                    potential_overlap = reassembled[-overlap_size:]
-                    if chunk_text.startswith(potential_overlap):
-                        reassembled += chunk_text[overlap_size:]
-                    else:
-                        reassembled += chunk_text
-                else:
-                    reassembled += chunk_text
+        # Verify chunks can be reassembled using the base class method
+        # This tests that our overlap handling works correctly
+        from src.db.vector_db_milvus import MilvusVectorDatabase
+
+        db_test = MilvusVectorDatabase()
+        # Convert chunks to the format expected by _reassemble_chunks_into_document
+        chunk_dicts = [
+            {
+                "text": chunk["text"],
+                "metadata": {
+                    "chunk_sequence_number": chunk["sequence"],
+                    "offset_start": chunk["offset_start"],
+                    "offset_end": chunk["offset_end"],
+                },
+            }
+            for chunk in chunks
+        ]
+
+        reassembled_doc = db_test._reassemble_chunks_into_document(chunk_dicts)
+        assert reassembled_doc is not None, "Reassembly failed"
+        reassembled = reassembled_doc["text"]
 
         # Verify reassembled content contains all key sections
         for i in range(20):
@@ -139,7 +140,9 @@ class TestChunkingE2E:
             )
             assert f"topic_{i}" in reassembled, f"Reassembled content missing topic_{i}"
 
-        print(f"✓ Document successfully reassembled from {len(chunks)} chunks")
+        print(
+            f"✓ Document successfully reassembled from {len(chunks)} chunks using base class method"
+        )
 
         # Now test with actual database ingestion
         db = await create_test_db(

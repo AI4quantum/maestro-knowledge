@@ -466,14 +466,19 @@ class VectorDatabase(ABC):
         self, chunks: list[dict[str, Any]]
     ) -> dict[str, Any] | None:
         """
-        Internal helper: Reassemble a document from its chunks.
+        Internal helper: Reassemble a document from its chunks, handling overlaps.
 
-        This is a utility method with a default implementation that can be
-        used by get_document() implementations. The underscore prefix indicates
-        this is an internal helper, not a public API.
+        This method correctly handles overlapping chunks by using offset metadata
+        when available, or falling back to text-based overlap detection.
+
+        Strategy:
+        1. Sort chunks by chunk_sequence_number
+        2. Use offset_start/offset_end to detect overlaps (primary method)
+        3. Fall back to text-based overlap detection if offsets unavailable
+        4. Skip overlapping portions when concatenating chunks
 
         Args:
-            chunks: A list of document chunks.
+            chunks: A list of document chunks with text and metadata.
 
         Returns:
             The reassembled document, or None if chunks is empty or invalid.
@@ -481,20 +486,57 @@ class VectorDatabase(ABC):
         if not chunks:
             return None
 
-        # reassemble in the right order
+        # Sort chunks by sequence number
         try:
             sorted_chunks = sorted(
-                chunks, key=lambda x: x.get("metadata", {}).get("chunk_sequence_number")
+                chunks,
+                key=lambda x: x.get("metadata", {}).get("chunk_sequence_number", 0),
             )
         except Exception:
             return None
 
-        # Reassemble text
-        full_text = "".join(chunk["text"] for chunk in sorted_chunks)
+        # Start with first chunk
+        result_text = sorted_chunks[0].get("text", "")
+        last_offset_end = sorted_chunks[0].get("metadata", {}).get("offset_end")
+
+        # Process remaining chunks, handling overlaps
+        for i in range(1, len(sorted_chunks)):
+            chunk = sorted_chunks[i]
+            chunk_text = chunk.get("text", "")
+            metadata = chunk.get("metadata", {})
+
+            # Try offset-based overlap detection first (more reliable)
+            offset_start = metadata.get("offset_start")
+            offset_end = metadata.get("offset_end")
+
+            if offset_start is not None and last_offset_end is not None:
+                # Calculate overlap using offsets
+                overlap_size = max(0, last_offset_end - offset_start)
+
+                if overlap_size > 0 and overlap_size < len(chunk_text):
+                    # Skip overlapping portion
+                    result_text += chunk_text[overlap_size:]
+                elif overlap_size == 0:
+                    # No overlap, append entire chunk
+                    result_text += chunk_text
+                else:
+                    # Overlap >= chunk size (shouldn't happen, but skip chunk)
+                    continue
+
+                last_offset_end = offset_end
+            else:
+                # Fallback: text-based overlap detection
+                overlap_size = self._find_text_overlap(result_text, chunk_text)
+                if overlap_size > 0:
+                    result_text += chunk_text[overlap_size:]
+                else:
+                    result_text += chunk_text
+                # Can't track offsets anymore
+                last_offset_end = None
 
         # Create the reassembled document
         reassembled_doc = sorted_chunks[0].copy()
-        reassembled_doc["text"] = full_text
+        reassembled_doc["text"] = result_text
 
         # Clean up chunk-specific metadata
         for key in [
@@ -511,3 +553,27 @@ class VectorDatabase(ABC):
                     pass
 
         return reassembled_doc
+
+    def _find_text_overlap(self, text1: str, text2: str, min_overlap: int = 5) -> int:
+        """
+        Find the size of overlap between the end of text1 and start of text2.
+
+        This is a fallback method used when offset metadata is not available.
+        It searches for the longest common substring at the boundary.
+
+        Args:
+            text1: First text (already assembled).
+            text2: Second text (to be added).
+            min_overlap: Minimum overlap size to consider (default: 5 chars).
+
+        Returns:
+            Size of overlap in characters, or 0 if no significant overlap found.
+        """
+        max_overlap = min(len(text1), len(text2))
+
+        # Search from largest to smallest possible overlap
+        for overlap in range(max_overlap, min_overlap - 1, -1):
+            if text1[-overlap:] == text2[:overlap]:
+                return overlap
+
+        return 0
