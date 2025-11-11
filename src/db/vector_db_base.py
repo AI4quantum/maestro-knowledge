@@ -426,13 +426,22 @@ class VectorDatabase(ABC):
 
     @abstractmethod
     async def search(
-        self, query: str, limit: int = 5, collection_name: str | None = None
+        self,
+        query: str,
+        limit: int = 5,
+        collection_name: str | None = None,
+        min_score: float | None = None,
+        metadata_filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Search for documents using vector similarity search.
 
         Args:
             query: The search query text
+            limit: Maximum number of results to return
+            collection_name: Optional collection name to search in
+            min_score: Minimum similarity score threshold (0-1). Results below this are filtered out.
+            metadata_filters: Dictionary of metadata field filters. Only results matching all filters are returned.
             limit: Maximum number of results to return
             collection_name: Optional collection name to search in
 

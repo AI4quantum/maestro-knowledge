@@ -17,8 +17,8 @@
 | Phase 2.5 | ✅ COMPLETE | Improve embedding docs | NO |
 | Phase 2.6 | ✅ COMPLETE | Separate setup from collection creation | YES - Tool naming & workflow |
 | Phase 3 | ✅ COMPLETE | Fix reassembly bug | NO - Internal improvement |
-| Phase 4 | 📋 PLANNED | Add search quality controls | NO |
-| Phase 5 | 📋 PLANNED | Improve citation format | NO |
+| Phase 4 | ✅ COMPLETE | Add search quality controls | NO - Backward compatible |
+| Phase 5 | ✅ COMPLETE | Improve citation format | NO - Additive only |
 | Phase 6 | 📋 PLANNED | Enhance error messages | NO |
 | Phase 7 | 📋 PLANNED | Update test suite | NO |
 | Phase 8 | 📋 PLANNED | Update documentation | NO |
@@ -247,6 +247,167 @@ The reassembly logic now:
 - Preserves all non-chunk-specific metadata
 
 #### Example Scenarios
+
+### Phase 4: Search Quality Controls (COMPLETED)
+
+**What Changed:**
+- Added `min_score` parameter to filter low-quality search results
+- Added `metadata_filters` parameter to filter results by document metadata
+- Both parameters are optional and backward compatible
+
+**Migration Required:** NO - Existing code continues to work, new parameters are optional
+
+**Benefits:**
+- Filter out irrelevant results with `min_score` threshold
+- Narrow searches by document properties with `metadata_filters`
+- Improved search precision for LLM agents
+
+#### New Parameters
+
+**`min_score` (optional):**
+- Type: `float` (0-1 range)
+- Filters results below the specified similarity score
+- Higher scores indicate better matches
+- Example: `min_score=0.8` keeps only high-confidence results
+
+**`metadata_filters` (optional):**
+- Type: `dict[str, Any]`
+- Filters results by metadata field values
+- Only results matching ALL filters are returned
+- Example: `{"language": "python", "level": "beginner"}`
+
+#### Usage Examples
+
+**Before Phase 4 (still works):**
+```python
+# Basic search without filters
+results = await client.call_tool("search", {
+    "database": "mydb",
+    "query": "Python programming",
+    "limit": 5
+})
+```
+
+**After Phase 4 (with quality controls):**
+```python
+# Filter by minimum score
+results = await client.call_tool("search", {
+    "database": "mydb",
+    "query": "Python programming",
+    "limit": 10,
+    "min_score": 0.8  # Only high-quality matches
+})
+
+# Filter by metadata
+results = await client.call_tool("search", {
+    "database": "mydb",
+    "query": "programming tutorial",
+    "limit": 10,
+    "metadata_filters": {
+        "language": "python",
+        "level": "beginner"
+    }
+})
+
+# Combine both filters
+results = await client.call_tool("search", {
+    "database": "mydb",
+    "query": "advanced techniques",
+    "limit": 10,
+    "min_score": 0.7,
+    "metadata_filters": {
+        "language": "python",
+        "level": "advanced"
+    }
+})
+```
+
+#### How It Works
+
+1. **Score Filtering:** Applied after vector search, removes results with `score` or `similarity` below threshold
+2. **Metadata Filtering:** Checks each result's metadata dictionary against all filter conditions
+3. **Order:** Filters are applied in sequence (score first, then metadata)
+4. **Re-ranking:** Results are re-ranked after filtering to maintain correct rank order
+
+### Phase 5: Improved Citation Format (COMPLETED)
+
+**What Changed:**
+- Added `url` field at top level of search results (previously nested in metadata)
+- Added `source_citation` field with formatted citation string
+- Added `score` field as canonical similarity score (normalized 0-1)
+- Improved result structure for LLM-friendly citation extraction
+
+**Migration Required:** NO - Additive changes only, existing fields remain
+
+**Benefits:**
+- URLs are immediately visible at top level (no need to dig into metadata)
+- Ready-to-use citation strings for LLM responses
+- Consistent score field across all backends
+- Easier for agents to cite sources correctly
+
+#### New Result Format
+
+**Before Phase 5:**
+```json
+{
+  "text": "Python is a programming language...",
+  "metadata": {
+    "url": "https://example.com/python-guide",
+    "doc_name": "Python Guide"
+  },
+  "similarity": 0.85,
+  "rank": 1
+}
+```
+
+**After Phase 5:**
+```json
+{
+  "text": "Python is a programming language...",
+  "url": "https://example.com/python-guide",
+  "source_citation": "Source: Python Guide (https://example.com/python-guide)",
+  "score": 0.85,
+  "metadata": {
+    "doc_name": "Python Guide"
+  },
+  "rank": 1
+}
+```
+
+#### Field Descriptions
+
+- **`url`** (top-level): Direct link to source document, easy to extract
+- **`source_citation`**: Formatted string ready for LLM responses: `"Source: {doc_name} ({url})"`
+- **`score`**: Canonical similarity score (0-1), normalized across backends
+- **`metadata`**: Still contains all metadata, including `doc_name` and other fields
+
+#### Usage in LLM Responses
+
+The new format makes it trivial for LLMs to cite sources:
+
+```python
+# Agent can easily extract and cite sources
+for result in results:
+    print(f"Content: {result['text']}")
+    print(f"Citation: {result['source_citation']}")
+    print(f"Direct link: {result['url']}")
+    print(f"Relevance: {result['score']:.2f}")
+```
+
+Example LLM response:
+```
+Python is a high-level programming language known for its simplicity and readability.
+
+Source: Python Guide (https://example.com/python-guide)
+```
+
+#### Backward Compatibility
+
+- All existing fields remain unchanged
+- `url` is still in metadata (for backward compatibility)
+- `similarity` field still present alongside `score`
+- Old code continues to work without modification
+
 
 **Scenario 1: Fixed Chunking with Overlap**
 ```python

@@ -86,13 +86,18 @@ class TestMilvusVectorDatabase:
     async def test_setup_collection_not_exists(
         self, mock_milvus_client: AsyncMock
     ) -> None:
+        """Test that create_collection creates a collection when it doesn't exist."""
         mock_client = AsyncMock()
         mock_client.has_collection = AsyncMock(return_value=False)
 
         mock_milvus_client.return_value = mock_client
         db = MilvusVectorDatabase()
         db.dimension = 1536
+
+        # Phase 2.6: setup() and create_collection() are separate
         await db.setup()
+        await db.create_collection("MaestroDocs")
+
         mock_client.create_collection.assert_called_once_with(
             collection_name="MaestroDocs",
             dimension=1536,
@@ -170,10 +175,11 @@ class TestMilvusVectorDatabase:
             "strategy": "Fixed",
             "parameters": {"chunk_size": 16, "overlap": 0},
         }
-        # Also set embedding to avoid openai dependency by mocking _generate_embedding
-        await db.setup(
-            embedding="text-embedding-ada-002",
+        # Phase 2.6: setup() and create_collection() are separate
+        await db.setup(embedding="text-embedding-ada-002")
+        await db.create_collection(
             collection_name="ChunkCol",
+            embedding="text-embedding-ada-002",
             chunking_config=chunk_cfg,
         )
 
@@ -233,9 +239,11 @@ class TestMilvusVectorDatabase:
             },
             clear=True,
         ):
-            await db.setup(
-                embedding="custom_local",
+            # Phase 2.6: setup() and create_collection() are separate
+            await db.setup(embedding="custom_local")
+            await db.create_collection(
                 collection_name="CfgCol",
+                embedding="custom_local",
                 chunking_config={
                     "strategy": "Fixed",
                     "parameters": {"chunk_size": 512, "overlap": 0},
@@ -465,7 +473,7 @@ class TestMilvusVectorDatabase:
     async def test_get_collection_info_includes_chunking(
         self, mock_milvus_client: AsyncMock
     ) -> None:
-        """get_collection_info should include the chunking config after setup."""
+        """get_collection_info should include the chunking config after create_collection."""
         mock_client = AsyncMock()
         mock_client.has_collection = AsyncMock(return_value=True)
         mock_client.get_collection_stats.return_value = {"row_count": 7}
@@ -481,9 +489,11 @@ class TestMilvusVectorDatabase:
             "strategy": "Fixed",
             "parameters": {"chunk_size": 512, "overlap": 0},
         }
-        await db.setup(
-            embedding="text-embedding-3-small",
+        # Phase 2.6: setup() and create_collection() are separate
+        await db.setup(embedding="text-embedding-3-small")
+        await db.create_collection(
             collection_name="InfoCol",
+            embedding="text-embedding-3-small",
             chunking_config=chunk_cfg,
         )
 
@@ -491,9 +501,9 @@ class TestMilvusVectorDatabase:
         assert info["name"] == "InfoCol"
         assert info["db_type"] == "milvus"
         assert info["document_count"] == 7
-        # chunking should reflect what we set in setup
+        # chunking should reflect what we set in create_collection
         assert info.get("chunking") == chunk_cfg
-        # embedding should be whatever we set in setup
+        # embedding should be whatever we set in create_collection
         assert info.get("embedding") == "text-embedding-3-small"
 
     @pytest.mark.asyncio
@@ -509,9 +519,12 @@ class TestMilvusVectorDatabase:
 
         db = MilvusVectorDatabase()
         chunk_cfg = {"strategy": "Sentence", "parameters": {"max_chars": 500}}
-        # Store metadata via setup
-        await db.setup(
-            embedding="default", collection_name="NoSuchCol", chunking_config=chunk_cfg
+        # Phase 2.6: Store metadata via create_collection (even if collection doesn't exist yet)
+        await db.setup(embedding="default")
+        await db.create_collection(
+            collection_name="NoSuchCol",
+            embedding="default",
+            chunking_config=chunk_cfg,
         )
 
         info = await db.get_collection_info("NoSuchCol")

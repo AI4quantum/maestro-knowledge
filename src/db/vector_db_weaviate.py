@@ -861,7 +861,12 @@ class WeaviateVectorDatabase(VectorDatabase):
             return f"Error querying database: {str(e)}"
 
     async def search(
-        self, query: str, limit: int = 5, collection_name: str | None = None
+        self,
+        query: str,
+        limit: int = 5,
+        collection_name: str | None = None,
+        min_score: float | None = None,
+        metadata_filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Search for documents using Weaviate's vector similarity search.
@@ -870,6 +875,8 @@ class WeaviateVectorDatabase(VectorDatabase):
             query: The search query text
             limit: Maximum number of results to return
             collection_name: Optional collection name to search in (defaults to self.collection_name)
+            min_score: Minimum similarity score threshold (0-1). Results below this are filtered out.
+            metadata_filters: Dictionary of metadata field filters. Only results matching all filters are returned.
 
         Returns:
             List of documents sorted by relevance
@@ -923,12 +930,38 @@ class WeaviateVectorDatabase(VectorDatabase):
                     score_val = None
                     distance_val = None
 
+                # Try to parse metadata if it's a JSON string first
+                metadata_str = obj.properties.get("metadata", "{}")
+                try:
+                    import json
+
+                    parsed_metadata = json.loads(metadata_str)
+                except (json.JSONDecodeError, TypeError):
+                    parsed_metadata = {}
+
+                url = obj.properties.get("url", "")
+
                 doc = {
                     "id": obj.uuid,
-                    "url": obj.properties.get("url", ""),
                     "text": obj.properties.get("text", ""),
-                    "metadata": obj.properties.get("metadata", "{}"),
+                    "metadata": parsed_metadata,
                 }
+
+                # Phase 5: Add top-level URL and source citation
+                if url:
+                    doc["url"] = url
+                    doc_name = (
+                        parsed_metadata.get("doc_name", "Unknown")
+                        if isinstance(parsed_metadata, dict)
+                        else "Unknown"
+                    )
+                    doc["source_citation"] = f"Source: {doc_name} ({url})"
+                elif isinstance(parsed_metadata, dict) and parsed_metadata.get(
+                    "doc_name"
+                ):
+                    doc["source_citation"] = (
+                        f"Source: {parsed_metadata.get('doc_name')}"
+                    )
 
                 # Normalized scoring fields
                 # Always mark search mode and metric where known (Weaviate default vectorizer uses cosine)
@@ -966,17 +999,11 @@ class WeaviateVectorDatabase(VectorDatabase):
                 if similarity is not None:
                     # Provide normalized similarity only (single canonical score)
                     doc["similarity"] = similarity
+                    # Use similarity as the canonical score field
+                    doc["score"] = similarity
 
                 # Rank within this result set (1-based)
                 doc["rank"] = idx
-
-                # Try to parse metadata if it's a JSON string
-                try:
-                    import json
-
-                    doc["metadata"] = json.loads(doc["metadata"])
-                except (json.JSONDecodeError, TypeError):
-                    pass
 
                 # Drop verbose chunking policy from per-result metadata to reduce duplication
                 try:
@@ -991,6 +1018,33 @@ class WeaviateVectorDatabase(VectorDatabase):
                     pass
 
                 documents.append(doc)
+
+            # Phase 4: Apply min_score filter
+            if min_score is not None:
+                documents = [
+                    d
+                    for d in documents
+                    if d.get("score", 0) >= min_score
+                    or d.get("similarity", 0) >= min_score
+                ]
+
+            # Phase 4: Apply metadata filters
+            if metadata_filters:
+                filtered_docs = []
+                for d in documents:
+                    doc_metadata = d.get("metadata", {})
+                    if isinstance(doc_metadata, dict):
+                        # Check if all filter conditions match
+                        if all(
+                            doc_metadata.get(k) == v
+                            for k, v in metadata_filters.items()
+                        ):
+                            filtered_docs.append(d)
+                documents = filtered_docs
+
+            # Re-rank after filtering
+            for i, d in enumerate(documents, start=1):
+                d["rank"] = i
 
             return documents
 

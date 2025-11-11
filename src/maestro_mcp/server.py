@@ -1421,13 +1421,37 @@ async def create_mcp_server() -> FastMCP:
         collection: str | None = Field(
             default=None, description="Optional collection name to search in"
         ),
+        min_score: float | None = Field(
+            default=None,
+            description="Minimum similarity score threshold (0-1). Results below this score are filtered out. Higher scores indicate better matches.",
+        ),
+        metadata_filters: dict[str, Any] | None = Field(
+            default=None,
+            description="Filter results by metadata fields. Provide a dictionary where keys are metadata field names and values are the required values. Only results matching ALL filters are returned. Example: {'doc_type': 'technical', 'language': 'python'}",
+        ),
     ) -> str:
-        """Search a vector database using vector similarity search."""
+        """
+        Search a vector database using vector similarity search with optional quality controls.
+
+        Results include:
+        - text: The document text content
+        - url: Direct link to the source (top-level for easy access)
+        - source_citation: Formatted citation string for easy reference
+        - score/similarity: Relevance score (0-1, higher is better)
+        - metadata: Additional document metadata
+        - rank: Position in results (1-based)
+
+        Use min_score to filter low-quality results and metadata_filters to narrow by document properties.
+        """
         try:
             db = get_database_by_name(database)
             kwargs: dict[str, Any] = {"limit": limit}
             if collection is not None:
                 kwargs["collection_name"] = collection
+            if min_score is not None:
+                kwargs["min_score"] = min_score
+            if metadata_filters is not None:
+                kwargs["metadata_filters"] = metadata_filters
             ok, response = await run_with_timeout(
                 db.search(query, **kwargs), "search", get_timeout("search")
             )

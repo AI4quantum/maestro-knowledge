@@ -148,7 +148,7 @@ class TestWeaviateVectorDatabase:
 
     @pytest.mark.asyncio
     async def test_setup_collection_not_exists_default_embedding(self) -> None:
-        """Test setup when collection doesn't exist with default embedding."""
+        """Test create_collection when collection doesn't exist with default embedding."""
         with (
             patch("weaviate.use_async_with_weaviate_cloud") as mock_connect,
             patch("weaviate.classes.config.Configure") as mock_configure,
@@ -174,14 +174,16 @@ class TestWeaviateVectorDatabase:
             mock_datatype.TEXT = "TEXT"
 
             db = WeaviateVectorDatabase()
+            # Phase 2.6: setup() and create_collection() are separate
             await db.setup()
+            await db.create_collection("MaestroDocs")
 
             # Should create collection since it doesn't exist
             mock_client.collections.create.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_setup_collection_not_exists_custom_embedding(self) -> None:
-        """Test setup when collection doesn't exist with custom embedding."""
+        """Test create_collection when collection doesn't exist with custom embedding."""
         with (
             patch("weaviate.use_async_with_weaviate_cloud") as mock_connect,
             patch("weaviate.classes.config.Configure") as mock_configure,
@@ -207,7 +209,11 @@ class TestWeaviateVectorDatabase:
             mock_datatype.TEXT = "TEXT"
 
             db = WeaviateVectorDatabase()
+            # Phase 2.6: setup() and create_collection() are separate
             await db.setup(embedding="text-embedding-ada-002")
+            await db.create_collection(
+                "MaestroDocs", embedding="text-embedding-ada-002"
+            )
 
             # Should create collection since it doesn't exist
             mock_client.collections.create.assert_called_once()
@@ -531,7 +537,7 @@ class TestWeaviateVectorDatabase:
 
     @pytest.mark.asyncio
     async def test_get_collection_info_includes_chunking(self) -> None:
-        """get_collection_info should include chunking config set at setup time."""
+        """get_collection_info should include chunking config set at create_collection time."""
         with (
             patch("weaviate.use_async_with_weaviate_cloud") as mock_connect,
             patch.dict(
@@ -572,9 +578,11 @@ class TestWeaviateVectorDatabase:
                 "strategy": "Fixed",
                 "parameters": {"chunk_size": 512, "overlap": 0},
             }
-            await db.setup(
-                embedding="text-embedding-3-small",
+            # Phase 2.6: setup() and create_collection() are separate
+            await db.setup(embedding="text-embedding-3-small")
+            await db.create_collection(
                 collection_name="InfoCol",
+                embedding="text-embedding-3-small",
                 chunking_config=chunk_cfg,
             )
 
@@ -582,7 +590,7 @@ class TestWeaviateVectorDatabase:
             assert info["name"] == "InfoCol"
             assert info["db_type"] == "weaviate"
             assert info.get("chunking") == chunk_cfg
-            # embedding may be stored as we set in setup
+            # embedding may be stored as we set in create_collection
             assert info.get("embedding") in (
                 "text-embedding-3-small",
                 "text2vec-openai",

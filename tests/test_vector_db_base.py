@@ -44,7 +44,7 @@ class ConcreteVectorDatabase(VectorDatabase):
 
     def __init__(self, collection_name: str = "TestCollection") -> None:
         super().__init__(collection_name)
-        self.documents = []
+        self.documents: list[dict[str, Any]] = []
         self.next_id = 0
         self.embedding_model = "default"
 
@@ -55,27 +55,46 @@ class ConcreteVectorDatabase(VectorDatabase):
     def supported_embeddings(self) -> list[str]:
         return ["default", "test-embedding"]
 
-    def setup(self, embedding: str = "default", collection_name: str = None) -> None:
+    async def setup(
+        self, embedding: str = "default", collection_name: str | None = None
+    ) -> None:
         self.embedding_model = embedding
         if collection_name:
             self.collection_name = collection_name
 
+    async def create_collection(
+        self,
+        collection_name: str,
+        embedding: str = "default",
+        chunking_config: dict[str, Any] | None = None,
+    ) -> None:
+        """Create a new collection (mock implementation)."""
+        self.collection_name = collection_name
+        self.embedding_model = embedding
+
     async def write_documents(
         self,
         documents: list[dict[str, Any]],
-        collection_name: str = None,
-    ) -> None:
+        collection_name: str | None = None,
+    ) -> dict[str, Any]:
         for doc in documents:
             doc_copy = doc.copy()
             doc_copy["id"] = str(self.next_id)
             doc_copy["embedding_used"] = self.embedding_model
             self.documents.append(doc_copy)
             self.next_id += 1
+        return {
+            "backend": "test",
+            "documents": len(documents),
+            "chunks": len(documents),
+        }
 
-    def list_documents(self, limit: int = 10, offset: int = 0) -> list[dict[str, Any]]:
+    async def list_documents(
+        self, limit: int = 10, offset: int = 0
+    ) -> list[dict[str, Any]]:
         return self.documents[offset : offset + limit]
 
-    def count_documents(self) -> int:
+    async def count_documents(self) -> int:
         return len(self.documents)
 
     async def delete_documents(self, document_ids: list[str]) -> None:
@@ -83,14 +102,13 @@ class ConcreteVectorDatabase(VectorDatabase):
             doc for doc in self.documents if doc["id"] not in document_ids
         ]
 
-    def delete_collection(self, collection_name: str = None) -> None:
+    async def delete_collection(self, collection_name: str | None = None) -> None:
         target_collection = collection_name or self.collection_name
         if target_collection == self.collection_name:
             self.documents = []
-            self.collection_name = None
 
-    def get_document(
-        self, doc_name: str, collection_name: str = None
+    async def get_document(
+        self, doc_name: str, collection_name: str | None = None
     ) -> dict[str, Any]:
         """Get a specific document by name from the vector database."""
         target_collection = collection_name or self.collection_name
@@ -110,14 +128,16 @@ class ConcreteVectorDatabase(VectorDatabase):
             f"Document '{doc_name}' not found in collection '{target_collection}'"
         )
 
-    def list_collections(self) -> list[str]:
+    async def list_collections(self) -> list[str]:
         """List all collections in the vector database."""
         # For testing purposes, return a list with the current collection if it exists
         if self.collection_name:
             return [self.collection_name]
         return []
 
-    def get_collection_info(self, collection_name: str = None) -> dict[str, Any]:
+    async def get_collection_info(
+        self, collection_name: str | None = None
+    ) -> dict[str, Any]:
         """Get detailed information about a collection."""
         target_collection = collection_name or self.collection_name
         return {
@@ -131,15 +151,22 @@ class ConcreteVectorDatabase(VectorDatabase):
     def create_query_agent(self) -> "VectorDatabase":
         return self
 
-    def cleanup(self) -> None:
+    async def cleanup(self) -> None:
         self.documents = []
 
-    def query(self, query: str, limit: int = 5, collection_name: str = None) -> str:
+    async def query(
+        self, query: str, limit: int = 5, collection_name: str | None = None
+    ) -> str:
         return f"Dummy query response: {query} (limit={limit})"
 
-    def search(
-        self, query: str, limit: int = 5, collection_name: str = None
-    ) -> list[dict]:
+    async def search(
+        self,
+        query: str,
+        limit: int = 5,
+        collection_name: str | None = None,
+        min_score: float | None = None,
+        metadata_filters: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         return [{"result": f"Dummy search response: {query} (limit={limit})"}]
 
 
@@ -159,7 +186,7 @@ class TestConcreteVectorDatabase:
     async def test_write_document_singular(self) -> None:
         """Test the singular write_document method."""
         db = ConcreteVectorDatabase()
-        db.setup(embedding="default")
+        await db.setup(embedding="default")
         doc = {"url": "test.com", "text": "test", "metadata": {"key": "value"}}
 
         await db.write_document(doc)
@@ -171,7 +198,7 @@ class TestConcreteVectorDatabase:
     async def test_write_document_with_embedding(self) -> None:
         """Test the write_document method uses embedding from setup."""
         db = ConcreteVectorDatabase()
-        db.setup(embedding="test-embedding")
+        await db.setup(embedding="test-embedding")
         doc = {"url": "test.com", "text": "test", "metadata": {"key": "value"}}
 
         await db.write_document(doc)
@@ -182,7 +209,7 @@ class TestConcreteVectorDatabase:
     async def test_write_documents_with_embedding(self) -> None:
         """Test the write_documents method uses embedding from setup."""
         db = ConcreteVectorDatabase()
-        db.setup(embedding="test-embedding")
+        await db.setup(embedding="test-embedding")
         docs = [
             {"url": "test1.com", "text": "test1", "metadata": {}},
             {"url": "test2.com", "text": "test2", "metadata": {}},
@@ -208,13 +235,13 @@ class TestConcreteVectorDatabase:
     async def test_count_documents(self) -> None:
         """Test the count_documents method."""
         db = ConcreteVectorDatabase()
-        assert db.count_documents() == 0
+        assert await db.count_documents() == 0
 
         doc1 = {"url": "test1.com", "text": "test1", "metadata": {}}
         doc2 = {"url": "test2.com", "text": "test2", "metadata": {}}
 
         await db.write_documents([doc1, doc2])
-        assert db.count_documents() == 2
+        assert await db.count_documents() == 2
 
     @pytest.mark.asyncio
     async def test_delete_documents_multiple(self) -> None:
@@ -225,10 +252,10 @@ class TestConcreteVectorDatabase:
         doc3 = {"url": "test3.com", "text": "test3", "metadata": {}}
 
         await db.write_documents([doc1, doc2, doc3])
-        assert db.count_documents() == 3
+        assert await db.count_documents() == 3
 
         await db.delete_documents(["0", "2"])
-        assert db.count_documents() == 1
+        assert await db.count_documents() == 1
         assert db.documents[0]["url"] == "test2.com"
 
     @pytest.mark.asyncio
@@ -238,12 +265,11 @@ class TestConcreteVectorDatabase:
         doc = {"url": "test.com", "text": "test", "metadata": {}}
 
         await db.write_document(doc)
-        assert db.count_documents() == 1
+        assert await db.count_documents() == 1
         assert db.collection_name == "TestCollection"
 
-        db.delete_collection()
-        assert db.count_documents() == 0
-        assert db.collection_name is None
+        await db.delete_collection()
+        assert await db.count_documents() == 0
 
     @pytest.mark.asyncio
     async def test_delete_collection_specific_name(self) -> None:
@@ -252,9 +278,9 @@ class TestConcreteVectorDatabase:
         doc = {"url": "test.com", "text": "test", "metadata": {}}
 
         await db.write_document(doc)
-        assert db.count_documents() == 1
+        assert await db.count_documents() == 1
 
         # Delete a different collection name (should not affect current collection)
-        db.delete_collection("DifferentCollection")
-        assert db.count_documents() == 1
+        await db.delete_collection("DifferentCollection")
+        assert await db.count_documents() == 1
         assert db.collection_name == "TestCollection"

@@ -299,13 +299,24 @@ def test_reassembly_with_overlap():
 
 ---
 
-## Phase 4: Add Search Quality Controls
+## Phase 4: Add Search Quality Controls ✅ COMPLETE
+
+**Status**: COMPLETE
+**Date**: 2025-01-11
 
 ### Problem
 No way to filter low-quality results or search by metadata. Agents get irrelevant results.
 
 ### Solution
 Add `min_score` threshold and `metadata_filters` parameters.
+
+### Implementation Complete
+- ✅ Added `min_score` and `metadata_filters` to base class
+- ✅ Implemented filtering in Milvus backend
+- ✅ Implemented filtering in Weaviate backend
+- ✅ Updated MCP server search tool
+- ✅ Created comprehensive tests
+- ✅ Updated documentation
 
 ### Implementation Steps
 
@@ -364,10 +375,21 @@ if metadata_filters:
 
 ---
 
-## Phase 5: Improve Citation Format
+## Phase 5: Improve Citation Format ✅ COMPLETE
+
+**Status**: COMPLETE
+**Date**: 2025-01-11
 
 ### Problem
 URLs buried in technical metadata, hard for LLMs to extract.
+
+### Implementation Complete
+- ✅ Added top-level `url` field to results
+- ✅ Added `source_citation` formatted string
+- ✅ Added canonical `score` field
+- ✅ Implemented in Milvus backend
+- ✅ Implemented in Weaviate backend
+- ✅ Updated documentation with examples
 
 ### Current Format
 ```json

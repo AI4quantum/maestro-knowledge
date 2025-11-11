@@ -1161,7 +1161,12 @@ class MilvusVectorDatabase(VectorDatabase):
             return f"Error querying database: {str(e)}"
 
     async def _search_documents(
-        self, query: str, limit: int = 5, collection_name: str | None = None
+        self,
+        query: str,
+        limit: int = 5,
+        collection_name: str | None = None,
+        min_score: float | None = None,
+        metadata_filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Search for documents using vector similarity search.
@@ -1170,6 +1175,8 @@ class MilvusVectorDatabase(VectorDatabase):
             query: The search query text
             limit: Maximum number of results to return
             collection_name: Optional collection name to search in (defaults to self.collection_name)
+            min_score: Minimum similarity score threshold (0-1). Results below this are filtered out.
+            metadata_filters: Dictionary of metadata field filters. Only results matching all filters are returned.
 
         Returns:
             List of documents sorted by relevance
@@ -1325,20 +1332,17 @@ class MilvusVectorDatabase(VectorDatabase):
                         if getattr(hit_obj, "distance", None) is not None:
                             raw_distance = getattr(hit_obj, "distance")
 
+                    # Remove verbose chunking policy from per-result metadata
+                    clean_metadata = (
+                        {k: v for k, v in (metadata or {}).items() if k != "chunking"}
+                        if isinstance(metadata, dict)
+                        else metadata
+                    )
+
                     doc = {
                         "id": doc_id,
-                        "url": url,
                         "text": text,
-                        # Remove verbose chunking policy from per-result metadata
-                        "metadata": (
-                            {
-                                k: v
-                                for k, v in (metadata or {}).items()
-                                if k != "chunking"
-                            }
-                            if isinstance(metadata, dict)
-                            else metadata
-                        ),
+                        "metadata": clean_metadata,
                         # Explicit diagnostic marker so clients can tell vector vs keyword
                         "_search_mode": "vector",
                         "_metric": "cosine",
@@ -1346,6 +1350,22 @@ class MilvusVectorDatabase(VectorDatabase):
                         if query_vector is not None
                         else None,
                     }
+
+                    # Phase 5: Add top-level URL and source citation
+                    if url:
+                        doc["url"] = url
+                        doc_name = (
+                            clean_metadata.get("doc_name", "Unknown")
+                            if isinstance(clean_metadata, dict)
+                            else "Unknown"
+                        )
+                        doc["source_citation"] = f"Source: {doc_name} ({url})"
+                    elif isinstance(clean_metadata, dict) and clean_metadata.get(
+                        "doc_name"
+                    ):
+                        doc["source_citation"] = (
+                            f"Source: {clean_metadata.get('doc_name')}"
+                        )
 
                     # Do not include raw_* values in output; keep normalized view only
 
@@ -1375,6 +1395,8 @@ class MilvusVectorDatabase(VectorDatabase):
                         doc["distance"] = distance
                     if similarity is not None:
                         doc["similarity"] = similarity
+                        # Use similarity as the canonical score field
+                        doc["score"] = similarity
 
                     return doc
                 except Exception:
@@ -1408,6 +1430,29 @@ class MilvusVectorDatabase(VectorDatabase):
                     # Give up and return empty
                     return []
 
+            # Phase 4: Apply min_score filter
+            if min_score is not None:
+                documents = [
+                    d
+                    for d in documents
+                    if d.get("score", 0) >= min_score
+                    or d.get("similarity", 0) >= min_score
+                ]
+
+            # Phase 4: Apply metadata filters
+            if metadata_filters:
+                filtered_docs = []
+                for d in documents:
+                    doc_metadata = d.get("metadata", {})
+                    if isinstance(doc_metadata, dict):
+                        # Check if all filter conditions match
+                        if all(
+                            doc_metadata.get(k) == v
+                            for k, v in metadata_filters.items()
+                        ):
+                            filtered_docs.append(d)
+                documents = filtered_docs
+
             # Add explicit rank 1..N and normalize metadata keys
             for i, d in enumerate(documents, start=1):
                 try:
@@ -1428,13 +1473,30 @@ class MilvusVectorDatabase(VectorDatabase):
             return await self._fallback_keyword_search(query, limit)
 
     async def search(
-        self, query: str, limit: int = 5, collection_name: str | None = None
+        self,
+        query: str,
+        limit: int = 5,
+        collection_name: str | None = None,
+        min_score: float | None = None,
+        metadata_filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Public search method required by the abstract base class. Delegates
         to the internal _search_documents implementation.
+
+        Args:
+            query: The search query text
+            limit: Maximum number of results to return
+            collection_name: Optional collection name to search in
+            min_score: Minimum similarity score threshold (0-1)
+            metadata_filters: Dictionary of metadata field filters
+
+        Returns:
+            List of documents sorted by relevance
         """
-        return await self._search_documents(query, limit, collection_name)
+        return await self._search_documents(
+            query, limit, collection_name, min_score, metadata_filters
+        )
 
     async def _fallback_keyword_search(
         self, query: str, limit: int = 5
