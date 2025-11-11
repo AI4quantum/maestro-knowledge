@@ -20,6 +20,7 @@ from starlette.responses import PlainTextResponse
 from src.chunking import ChunkingConfig
 from src.db.vector_db_base import VectorDatabase
 from src.db.vector_db_factory import create_vector_database
+from src.maestro_mcp.error_messages import ErrorMessages
 
 
 # Load environment variables from .env file
@@ -471,9 +472,17 @@ async def create_mcp_server() -> FastMCP:
         """
         Register a new vector database instance.
 
-        This creates an in-memory registry entry for a database instance.
-        After registration, use setup_database() to initialize the connection,
-        then create_collection() to create collections.
+        Creates an in-memory registry entry for a database instance.
+
+        Prerequisites: None (first step in database setup)
+
+        Next steps:
+        1. Initialize connection: setup_database(database="name", embedding="default")
+        2. Create collection: create_collection(database="name", collection="name")
+
+        Common errors:
+        - Database already exists: Use cleanup() to remove existing database first
+        - Invalid database_type: Must be 'milvus' or 'weaviate'
         """
         try:
             logger.info(
@@ -483,11 +492,14 @@ async def create_mcp_server() -> FastMCP:
                 f"Current vector_databases keys: {list(vector_databases.keys())}"
             )
 
+            # Validate database type
+            if database_type not in ["milvus", "weaviate"]:
+                return ErrorMessages.invalid_database_type(database_type)
+
             # Check if database with this name already exists
             if database in vector_databases:
-                error_msg = f"Vector database '{database}' already exists"
-                logger.error(error_msg)
-                return f"Error: {error_msg}"
+                logger.error(f"Database '{database}' already exists")
+                return ErrorMessages.database_already_exists(database)
 
             # Create new database instance
             vector_databases[database] = create_vector_database(
@@ -523,15 +535,24 @@ async def create_mcp_server() -> FastMCP:
         """
         Initialize a vector database connection.
 
-        This only sets up the database client connection. Collections must be created
-        explicitly using create_collection() after setup.
+        Establishes the client connection to the database server. Does NOT create collections.
 
-        Prerequisites: Database must be registered first using register_database().
+        Prerequisites:
+        - Database must be registered: register_database(database="name", database_type="milvus")
+
+        Next steps:
+        - Create collection: create_collection(database="name", collection="name", embedding="default")
+
+        Common errors:
+        - Database not found: Register it first with register_database()
+        - Invalid embedding: Use get_supported_embeddings() to see available options
+        - Connection timeout: Check database server is running and accessible
         """
         try:
             # Validate database is registered
             if database not in vector_databases:
-                return f"Error: Database '{database}' not found. Use register_database() first to register the database instance."
+                available = list(vector_databases.keys())
+                return ErrorMessages.database_not_found(database, available)
 
             db = get_database_by_name(database)
 
@@ -543,13 +564,26 @@ async def create_mcp_server() -> FastMCP:
                     get_timeout("setup_database"),
                 )
                 if not ok:
+                    # Check if it's an embedding error
+                    if "embedding" in str(res).lower():
+                        supported: list[str] = []
+                        if hasattr(db, "supported_embeddings"):
+                            supported_attr = getattr(db, "supported_embeddings")
+                            if callable(supported_attr):
+                                result = supported_attr()
+                                supported = result if isinstance(result, list) else []
+                            elif isinstance(supported_attr, list):
+                                supported = supported_attr
+                        return ErrorMessages.invalid_embedding(embedding, supported)
                     return str(res)
 
             return f"Successfully initialized {db.db_type} vector database '{database}' connection. Use create_collection() to create collections."
         except Exception as e:
             error_msg = f"Failed to set up vector database '{database}': {str(e)}"
             logger.error(error_msg)
-            return f"Error: {error_msg}"
+            return ErrorMessages.generic_operation_failed(
+                "setup database", database, str(e)
+            )
 
     @app.tool()
     async def get_supported_embeddings(
@@ -1054,7 +1088,26 @@ async def create_mcp_server() -> FastMCP:
         ),
         document_name: str = Field(..., description="Name of the document to delete"),
     ) -> str:
-        """Delete a document from a specific collection in a vector database by document name."""
+        """
+        Delete a document from a specific collection by document name.
+
+        Finds the document by name and removes all its chunks from the collection.
+
+        Prerequisites:
+        - Database must exist and be initialized
+        - Collection must exist
+        - Document must exist in the collection
+
+        Common errors:
+        - Database not found: Check with list_databases()
+        - Collection not found: Check with list_collections()
+        - Document not found: Check with list_documents_in_collection()
+        """
+        # Validate database exists
+        if database not in vector_databases:
+            available = list(vector_databases.keys())
+            return ErrorMessages.database_not_found(database, available)
+
         db = get_database_by_name(database)
 
         # Check if the collection exists
@@ -1067,9 +1120,7 @@ async def create_mcp_server() -> FastMCP:
             else []
         )
         if collection not in collections:
-            raise ValueError(
-                f"Collection '{collection}' not found in vector database '{database}'"
-            )
+            return ErrorMessages.collection_not_found(collection, database, collections)
 
         # Temporarily switch to the target collection
         original_collection = db.collection_name
@@ -1095,8 +1146,8 @@ async def create_mcp_server() -> FastMCP:
                     break
 
             if document_id is None:
-                raise ValueError(
-                    f"Document '{document_name}' not found in collection '{collection}' of vector database '{database}'"
+                return ErrorMessages.document_not_found(
+                    document_name, collection, database
                 )
 
             # Delete the document
@@ -1107,6 +1158,11 @@ async def create_mcp_server() -> FastMCP:
                 return f"Error: Failed to delete document '{document_name}' from collection '{collection}'"
 
             return f"Successfully deleted document '{document_name}' from collection '{collection}' in vector database '{database}'"
+        except Exception as e:
+            logger.error(f"Error deleting document: {str(e)}")
+            return ErrorMessages.generic_operation_failed(
+                "delete document", database, str(e)
+            )
         finally:
             # Restore original collection
             db.collection_name = original_collection
@@ -1332,14 +1388,27 @@ async def create_mcp_server() -> FastMCP:
         """
         Create a new collection in a vector database.
 
+        Creates a collection with specified embedding model and optional chunking configuration.
+        All documents in the collection will use this embedding model.
+
         Prerequisites:
-        1. Database must be registered using register_database()
-        2. Database connection must be initialized using setup_database()
+        1. Database registered: register_database(database="name", database_type="milvus")
+        2. Connection initialized: setup_database(database="name", embedding="default")
+
+        Next steps:
+        - Write documents: write_documents(database="name", documents=[...])
+
+        Common errors:
+        - Database not found: Register and initialize it first
+        - Collection already exists: Use delete_collection() to remove it first
+        - Invalid embedding: Use get_supported_embeddings() to see options
+        - Database not initialized: Call setup_database() first
         """
         try:
             # Validate database is registered
             if database not in vector_databases:
-                return f"Error: Database '{database}' not found. Use register_database() first to register the database instance."
+                available = list(vector_databases.keys())
+                return ErrorMessages.database_not_found(database, available)
 
             db = get_database_by_name(database)
 
@@ -1355,7 +1424,7 @@ async def create_mcp_server() -> FastMCP:
                 else []
             )
             if collection in existing_collections:
-                return f"Error: Collection '{collection}' already exists in vector database '{database}'"
+                return ErrorMessages.collection_already_exists(collection, database)
 
             # Create the collection using the create_collection method
             if hasattr(db, "create_collection"):
@@ -1369,32 +1438,76 @@ async def create_mcp_server() -> FastMCP:
                     get_timeout("create_collection"),
                 )
                 if not ok:
+                    # Check for specific error types
+                    error_str = str(res)
+                    if "embedding" in error_str.lower():
+                        supported: list[str] = []
+                        if hasattr(db, "supported_embeddings"):
+                            supported_attr = getattr(db, "supported_embeddings")
+                            if callable(supported_attr):
+                                result = supported_attr()
+                                supported = result if isinstance(result, list) else []
+                            elif isinstance(supported_attr, list):
+                                supported = supported_attr
+                        return ErrorMessages.invalid_embedding(embedding, supported)
+                    elif (
+                        "not initialized" in error_str.lower()
+                        or "not connected" in error_str.lower()
+                    ):
+                        return ErrorMessages.database_not_initialized(database)
                     return str(res)
             else:
                 return f"Error: Database '{database}' does not support create_collection method"
 
-            # NOTE: Embedding is configured per-collection at creation time.
-            # TODO(deprecate): Remove write-time embedding parameters from write tools in a future release.
             return f"Successfully created collection '{collection}' in vector database '{database}' with embedding '{embedding}'"
 
         except Exception as e:
             error_msg = f"Failed to create collection '{collection}' in vector database '{database}': {str(e)}"
             logger.error(error_msg)
-            return f"Error: {error_msg}"
+            return ErrorMessages.generic_operation_failed(
+                "create collection", database, str(e)
+            )
 
     @app.tool()
     async def query(
         database: str = Field(..., description="Name of the vector database instance"),
         query: str = Field(..., description="The query string to search for"),
         limit: int = Field(
-            default=5, description="Maximum number of results to consider"
+            default=5, description="Maximum number of results to consider (1-100)"
         ),
         collection: str | None = Field(
             default=None, description="Optional collection name to search in"
         ),
     ) -> str:
-        """Query a vector database using the default query agent."""
+        """
+        Query a vector database using the default query agent.
+
+        Returns a natural language summary of relevant documents.
+
+        Prerequisites:
+        - Database must exist and be initialized
+        - Collection must contain documents
+
+        Parameters:
+        - limit: Number of results (1-100), default 5
+        - collection: Optional specific collection, uses default if not provided
+
+        Common errors:
+        - Database not found: Check database name with list_databases()
+        - Collection not found: Check collection name with list_collections()
+        - No results: Collection may be empty or query doesn't match documents
+        - Invalid limit: Must be between 1 and 100
+        """
         try:
+            # Validate limit
+            if limit < 1 or limit > 100:
+                return ErrorMessages.invalid_limit(limit, 1, 100)
+
+            # Validate database exists
+            if database not in vector_databases:
+                available = list(vector_databases.keys())
+                return ErrorMessages.database_not_found(database, available)
+
             db = get_database_by_name(database)
             kwargs: dict[str, Any] = {"limit": limit}
             if collection is not None:
@@ -1403,13 +1516,35 @@ async def create_mcp_server() -> FastMCP:
                 db.query(query, **kwargs), "query", get_timeout("query")
             )
             if not ok:
+                error_str = str(response)
+                if (
+                    "collection" in error_str.lower()
+                    and "not found" in error_str.lower()
+                ):
+                    # Get available collections
+                    ok_list, colls_any = await run_with_timeout(
+                        db.list_collections(),
+                        "list_collections",
+                        get_timeout("list_collections"),
+                    )
+                    available_colls = (
+                        cast("list[str]", colls_any)
+                        if ok_list and isinstance(colls_any, list)
+                        else []
+                    )
+                    return ErrorMessages.collection_not_found(
+                        collection or "default", database, available_colls
+                    )
                 return str(response)
             # response is expected to be a string summary
             return str(response)
+        except KeyError:
+            available = list(vector_databases.keys())
+            return ErrorMessages.database_not_found(database, available)
         except Exception as e:
             error_msg = f"Failed to query vector database '{database}': {str(e)}"
             logger.error(error_msg)
-            return f"Error: {error_msg}"
+            return ErrorMessages.generic_operation_failed("query", database, str(e))
 
     @app.tool()
     async def search(

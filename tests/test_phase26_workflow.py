@@ -53,9 +53,10 @@ class TestPhase26Workflow:
         # Try to setup a database that hasn't been registered
         result = await setup_tool.fn(database="unregistered_db", embedding="default")
 
-        assert "Error" in result
-        assert "not found" in result
-        assert "register_database()" in result
+        # Phase 6: New error message format (no "Error:" prefix)
+        assert "not found" in result.lower()
+        assert "unregistered_db" in result
+        assert "register_database" in result
 
     async def test_create_collection_requires_registration(self) -> None:
         """Test that create_collection validates database is registered."""
@@ -80,9 +81,10 @@ class TestPhase26Workflow:
             embedding="default",
         )
 
-        assert "Error" in result
-        assert "not found" in result
-        assert "register_database()" in result
+        # Phase 6: New error message format (no "Error:" prefix)
+        assert "not found" in result.lower()
+        assert "unregistered_db" in result
+        assert "register_database" in result
 
     async def test_complete_workflow_milvus(self) -> None:
         """Test the complete 3-step workflow for Milvus."""
@@ -284,8 +286,10 @@ class TestPhase26Workflow:
                 database="test_db", collection="docs", embedding="default"
             )
 
-            assert "Error" in result
+            # Phase 6: New error message format (no "Error:" prefix)
             assert "already exists" in result
+            assert "docs" in result
+            assert "test_db" in result
 
     async def test_validation_error_messages_are_helpful(self) -> None:
         """Test that validation errors provide helpful guidance."""
@@ -294,19 +298,21 @@ class TestPhase26Workflow:
 
         tools = await server.get_tools()
 
-        # Test setup_database error message
+        # Test setup_database error message - Phase 6: Enhanced error messages
         result1 = await tools["setup_database"].fn(
             database="nonexistent", embedding="default"
         )
-        assert "register_database()" in result1
-        assert "first" in result1.lower()
+        assert "not found" in result1.lower()
+        assert "register_database" in result1
+        assert "nonexistent" in result1
 
-        # Test create_collection error message
+        # Test create_collection error message - Phase 6: Enhanced error messages
         result2 = await tools["create_collection"].fn(
             database="nonexistent", collection="test", embedding="default"
         )
-        assert "register_database()" in result2
-        assert "first" in result2.lower()
+        assert "not found" in result2.lower()
+        assert "register_database" in result2
+        assert "nonexistent" in result2
 
 
 @pytest.mark.asyncio

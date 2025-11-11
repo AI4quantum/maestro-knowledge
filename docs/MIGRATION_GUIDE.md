@@ -19,7 +19,7 @@
 | Phase 3 | ✅ COMPLETE | Fix reassembly bug | NO - Internal improvement |
 | Phase 4 | ✅ COMPLETE | Add search quality controls | NO - Backward compatible |
 | Phase 5 | ✅ COMPLETE | Improve citation format | NO - Additive only |
-| Phase 6 | 📋 PLANNED | Enhance error messages | NO |
+| Phase 6 | ✅ COMPLETE | Enhance error messages | NO - Backward compatible |
 | Phase 7 | 📋 PLANNED | Update test suite | NO |
 | Phase 8 | 📋 PLANNED | Update documentation | NO |
 | Phase 9 | 📋 PLANNED | Add ownership metadata | NO |
@@ -407,6 +407,118 @@ Source: Python Guide (https://example.com/python-guide)
 - `url` is still in metadata (for backward compatibility)
 - `similarity` field still present alongside `score`
 - Old code continues to work without modification
+### Phase 6: Enhanced Error Messages (COMPLETED)
+
+**Status**: COMPLETE
+**Date**: 2025-01-11
+
+**What Changed:**
+- Created centralized error message module with actionable guidance
+- Enhanced error handling in all tool functions
+- Improved tool documentation with prerequisites and common errors
+- Added parameter validation with helpful error messages
+
+**Migration Required:** NO - Backward compatible improvement
+
+**Benefits:**
+- LLM agents get actionable error messages with recovery steps
+- Clear guidance on what went wrong and how to fix it
+- Better parameter validation catches errors early
+- Improved tool documentation helps agents understand requirements
+
+#### New Error Message Format
+
+**Before Phase 6:**
+```
+Error: Database 'mydb' not found
+```
+
+**After Phase 6:**
+```
+Database 'mydb' not found.
+
+Available databases: 'docs', 'knowledge', 'support'
+
+To create a new database:
+1. Register: register_database(database="mydb", database_type="milvus", collection="default")
+2. Initialize: setup_database(database="mydb", embedding="default")
+3. Create collection: create_collection(database="mydb", collection="default")
+```
+
+#### Error Types Covered
+
+1. **Database Not Found** - Lists available databases and shows creation steps
+2. **Collection Not Found** - Lists available collections and shows creation command
+3. **Collection Already Exists** - Suggests using existing or deleting first
+4. **Database Already Exists** - Suggests using existing or cleanup
+5. **Invalid Embedding** - Lists supported embeddings with descriptions
+6. **Invalid Database Type** - Shows supported types (milvus, weaviate)
+7. **Document Not Found** - Suggests listing documents or writing new one
+8. **Invalid Parameters** - Clear validation messages for limit, min_score, etc.
+9. **Operation Timeout** - Troubleshooting steps for timeouts
+10. **Generic Failures** - Contextual error with troubleshooting guidance
+
+#### Enhanced Tool Documentation
+
+All tool functions now include:
+- **Prerequisites**: What must be done before calling this tool
+- **Next steps**: What to do after successful execution
+- **Common errors**: Typical failure scenarios and solutions
+- **Parameter descriptions**: Clear explanation of each parameter
+
+Example from `create_collection`:
+```python
+"""
+Create a new collection in a vector database.
+
+Creates a collection with specified embedding model and optional chunking configuration.
+All documents in the collection will use this embedding model.
+
+Prerequisites:
+1. Database registered: register_database(database="name", database_type="milvus")
+2. Connection initialized: setup_database(database="name", embedding="default")
+
+Next steps:
+- Write documents: write_documents(database="name", documents=[...])
+
+Common errors:
+- Database not found: Register and initialize it first
+- Collection already exists: Use delete_collection() to remove it first
+- Invalid embedding: Use get_supported_embeddings() to see options
+- Database not initialized: Call setup_database() first
+"""
+```
+
+#### Implementation Details
+
+**New Module**: `src/maestro_mcp/error_messages.py`
+- Centralized error message templates
+- Consistent formatting across all errors
+- Actionable guidance for recovery
+
+**Updated Functions**:
+- `register_database` - Database type validation, existence checks
+- `setup_database` - Database validation, embedding error detection
+- `create_collection` - Comprehensive error handling with specific guidance
+- `query` - Parameter validation, collection existence checks
+- `search` - Parameter validation, result filtering, helpful suggestions
+- `delete_document_from_collection` - Clear error messages for missing resources
+
+**Parameter Validation**:
+- `limit`: Must be 1-100
+- `min_score`: Must be 0.0-1.0
+- `database_type`: Must be 'milvus' or 'weaviate'
+- `embedding`: Validated against supported models
+
+#### Backward Compatibility
+
+- All existing code continues to work
+- Error messages are more helpful but don't change API
+- No breaking changes to function signatures
+- Additive improvement only
+
+---
+
 
 
 **Scenario 1: Fixed Chunking with Overlap**
