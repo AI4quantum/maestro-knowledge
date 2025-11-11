@@ -65,12 +65,10 @@ The MCP server provides natural language querying capabilities that work across 
 {
   "name": "query",
   "arguments": {
-    "input": {
-      "db_name": "my_database",
-      "query": "What is machine learning?",
-      "limit": 10,
-      "collection_name": "technical_docs"
-    }
+    "database": "my_database",
+    "query": "What is machine learning?",
+    "limit": 10,
+    "collection": "technical_docs"
   }
 }
 ```
@@ -157,28 +155,33 @@ Add the following to your MCP client configuration:
 
 Here's how an AI agent might interact with multiple vector databases:
 
-1. **Create multiple vector databases**:
+1. **Register and set up multiple vector databases** (3-step workflow):
    ```json
    {
-     "name": "create_vector_database_tool",
+     "name": "register_database",
      "arguments": {
-       "input": {
-         "db_name": "project_a_db",
-         "db_type": "weaviate",
-         "collection_name": "ProjectADocuments"
-       }
+       "database": "project_a_db",
+       "database_type": "weaviate",
+       "collection": "ProjectADocuments"
      }
    }
    ```
    ```json
    {
-     "name": "create_vector_database_tool",
+     "name": "setup_database",
      "arguments": {
-       "input": {
-         "db_name": "project_b_db",
-         "db_type": "milvus",
-         "collection_name": "ProjectBDocuments"
-       }
+       "database": "project_a_db",
+       "embedding": "text-embedding-ada-002"
+     }
+   }
+   ```
+   ```json
+   {
+     "name": "create_collection",
+     "arguments": {
+       "database": "project_a_db",
+       "collection": "ProjectADocuments",
+       "embedding": "text-embedding-ada-002"
      }
    }
    ```
@@ -196,40 +199,22 @@ Here's how an AI agent might interact with multiple vector databases:
    {
      "name": "get_supported_embeddings",
      "arguments": {
-       "input": {
-         "db_name": "project_a_db"
-       }
+       "database": "project_a_db"
      }
    }
    ```
 
-4. **Set up a specific database with embedding**:
-   ```json
-   {
-     "name": "setup_database",
-     "arguments": {
-       "input": {
-         "db_name": "project_a_db",
-         "embedding": "text-embedding-ada-002"
-       }
-     }
-   }
-   ```
-
-5. **Write documents to different databases**:
+4. **Write documents** (uses collection's embedding model):
    ```json
    {
      "name": "write_document",
      "arguments": {
-       "input": {
-         "db_name": "project_a_db",
-         "url": "https://example.com/doc1",
-         "text": "This is the content of the document",
-         "metadata": {
-           "author": "John Doe",
-           "date": "2024-01-01"
-         },
-         "embedding": "default"
+       "database": "project_a_db",
+       "url": "https://example.com/doc1",
+       "text": "This is the content of the document",
+       "metadata": {
+         "author": "John Doe",
+         "date": "2024-01-01"
        }
      }
    }
@@ -238,57 +223,65 @@ Here's how an AI agent might interact with multiple vector databases:
    {
      "name": "write_document",
      "arguments": {
-       "input": {
-         "db_name": "project_b_db",
-         "url": "https://example.com/doc2",
-         "text": "This document has a pre-computed vector",
-         "metadata": {
-           "author": "Jane Smith",
-           "date": "2024-01-02"
-         },
-         "vector": [0.1, 0.2, 0.3, ...],
-         "embedding": "default"
-       }
+       "database": "project_b_db",
+       "url": "https://example.com/doc2",
+       "text": "This document has a pre-computed vector",
+       "metadata": {
+         "author": "Jane Smith",
+         "date": "2024-01-02"
+       },
+       "vector": [0.1, 0.2, 0.3, ...]
      }
    }
    ```
 
-6. **Write multiple documents to a specific database**:
+5. **Write multiple documents**:
    ```json
    {
      "name": "write_documents",
      "arguments": {
-       "input": {
-         "db_name": "project_a_db",
-         "documents": [
-           {
-             "url": "https://example.com/doc3",
-             "text": "First document",
-             "metadata": {"category": "tech"}
-           },
-           {
-             "url": "https://example.com/doc4",
-             "text": "Second document",
-             "metadata": {"category": "science"}
-           }
-         ],
-         "embedding": "text-embedding-3-small"
-       }
+       "database": "project_a_db",
+       "documents": [
+         {
+           "url": "https://example.com/doc3",
+           "text": "First document",
+           "metadata": {"category": "tech"}
+         },
+         {
+           "url": "https://example.com/doc4",
+           "text": "Second document",
+           "metadata": {"category": "science"}
+         }
+       ]
      }
    }
    ```
 
-7. **Query documents using natural language**:
+6. **Query with search quality controls**:
    ```json
    {
      "name": "query",
      "arguments": {
-       "input": {
-         "db_name": "project_a_db",
-         "query": "What is the main topic of the documents?",
-         "limit": 5,
-         "collection_name": "ProjectADocuments"
-       }
+       "database": "project_a_db",
+       "query": "What is the main topic of the documents?",
+       "limit": 10,
+       "collection": "ProjectADocuments",
+       "min_score": 0.8,
+       "metadata_filters": {"category": "tech"}
+     }
+   }
+   ```
+
+7. **Search with quality controls**:
+   ```json
+   {
+     "name": "search",
+     "arguments": {
+       "database": "project_a_db",
+       "query": "machine learning concepts",
+       "limit": 5,
+       "min_score": 0.7,
+       "metadata_filters": {"author": "John Doe"}
      }
    }
    ```
@@ -298,11 +291,9 @@ Here's how an AI agent might interact with multiple vector databases:
    {
      "name": "list_documents",
      "arguments": {
-       "input": {
-         "db_name": "project_a_db",
-         "limit": 10,
-         "offset": 0
-       }
+       "database": "project_a_db",
+       "limit": 10,
+       "offset": 0
      }
    }
    ```
@@ -312,39 +303,33 @@ Here's how an AI agent might interact with multiple vector databases:
    {
      "name": "list_documents_in_collection",
      "arguments": {
-       "input": {
-         "db_name": "project_a_db",
-         "collection_name": "ProjectADocuments",
-         "limit": 10,
-         "offset": 0
-       }
+       "database": "project_a_db",
+       "collection": "ProjectADocuments",
+       "limit": 10,
+       "offset": 0
      }
    }
    ```
 
 10. **Get information about a specific database**:
-    ```json
-    {
-      "name": "get_database_info",
-      "arguments": {
-        "input": {
-          "db_name": "project_a_db"
-        }
-      }
-    }
-    ```
+     ```json
+     {
+       "name": "get_database_info",
+       "arguments": {
+         "database": "project_a_db"
+       }
+     }
+     ```
 
 11. **Clean up a specific database**:
-    ```json
-    {
-      "name": "cleanup",
-      "arguments": {
-        "input": {
-          "db_name": "project_a_db"
-        }
-      }
-    }
-    ```
+     ```json
+     {
+       "name": "cleanup",
+       "arguments": {
+         "database": "project_a_db"
+       }
+     }
+     ```
 
 ## Environment Variables
 

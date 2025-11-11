@@ -20,17 +20,96 @@
 | Phase 4 | ✅ COMPLETE | Add search quality controls | NO - Backward compatible |
 | Phase 5 | ✅ COMPLETE | Improve citation format | NO - Additive only |
 | Phase 6 | ✅ COMPLETE | Enhance error messages | NO - Backward compatible |
-| Phase 7 | 📋 PLANNED | Update test suite | NO |
-| Phase 8 | 📋 PLANNED | Update documentation | NO |
+| Phase 7 | ✅ COMPLETE | Update test suite | NO |
+| Phase 8 | ✅ COMPLETE | Update documentation | NO |
 | Phase 9 | 📋 PLANNED | Add ownership metadata | NO |
 | Phase 10 | 📋 PLANNED | Implement access control | NO |
 
+## Current API Reference (Post-Phase 6)
+
+**All changes from Phases 1-6 are now in effect.** Use this as your reference for current usage:
+
+### 3-Step Database Setup (Phase 2.6)
+
+```python
+# Step 1: Register database instance
+await register_database(
+    database="mydb",
+    database_type="milvus",
+    collection="docs"
+)
+
+# Step 2: Initialize connection with embedding model
+await setup_database(
+    database="mydb",
+    embedding="text-embedding-3-small"
+)
+
+# Step 3: Create collection
+await create_collection(
+    database="mydb",
+    collection="docs",
+    embedding="text-embedding-3-small"
+)
+```
+
+### Writing Documents (Phase 2)
+
+```python
+# No embedding parameter - uses collection's embedding model
+await write_documents(
+    database="mydb",
+    documents=[
+        {"url": "https://example.com/doc.html"},
+        {"url": "doc2", "text": "Direct text", "metadata": {"author": "Alice"}}
+    ]
+)
+```
+
+### Search with Quality Controls (Phase 4)
+
+```python
+# Filter by minimum similarity score and metadata
+results = await search(
+    database="mydb",
+    query="machine learning",
+    limit=10,
+    min_score=0.8,  # Only high-quality matches
+    metadata_filters={"language": "python", "level": "beginner"}
+)
+```
+
+### Improved Citations (Phase 5)
+
+```python
+# Results now include ready-to-use citations
+for result in results:
+    print(result['text'])  # Chunk text
+    print(result['url'])  # Direct link (top-level)
+    print(result['source_citation'])  # "Source: Doc Name (url)"
+    print(result['score'])  # Normalized 0-1 similarity
+```
+
+### Parameter Names (Phase 1)
+
+- `database` (not `db_name`)
+- `database_type` (not `db_type`)
+- `collection` (not `collection_name`)
+- `document_name` (not `doc_name`)
+- No `input` wrapper - all parameters at top level
+
+---
+
 ## Overview
 
-The Maestro Knowledge MCP server is being refactored to be more LLM-agent friendly by:
-1. **Removing nested 'input' wrappers** (Phase 1) ✅
-2. **Renaming parameters for clarity** (Phase 2) 📋
-3. **Fixing critical bugs** (Phase 3+) 📋
+The Maestro Knowledge MCP server has been refactored to be more LLM-agent friendly:
+1. **Removed nested 'input' wrappers** (Phase 1) ✅
+2. **Simplified embedding architecture** (Phase 2) ✅
+3. **Added 3-step workflow** (Phase 2.6) ✅
+4. **Fixed critical bugs** (Phase 3) ✅
+5. **Added search quality controls** (Phase 4) ✅
+6. **Improved citations** (Phase 5) ✅
+7. **Enhanced error messages** (Phase 6) ✅
 
 ## Breaking Changes by Phase
 

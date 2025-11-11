@@ -110,13 +110,18 @@ This should be rerun after pulling changes to ensure all dependencies are up-to-
 ```python
 from src.vector_db import create_vector_database
 
-# Create a vector database (defaults to Weaviate)
+# 3-Step Setup Process (Phase 2.6)
+# Step 1: Create database instance
 db = create_vector_database("weaviate", "MyCollection")
 
-# Set up the database
-db.setup()
+# Step 2: Initialize connection with embedding model
+db.setup(embedding="text-embedding-3-small")
 
-# Write documents - now supports automatic URL fetching!
+# Step 3: Create collection (if needed)
+db.create_collection("MyCollection", embedding="text-embedding-3-small")
+
+# Write documents - uses collection's embedding model (Phase 2)
+# No embedding parameter needed - it's configured at collection level
 documents = [
     # Option 1: Provide text directly (backwards compatible)
     {
@@ -135,15 +140,26 @@ documents = [
         "metadata": {"topic": "Research"}
     }
 ]
-db.write_documents(documents, embedding="default")
+db.write_documents(documents)  # No embedding parameter
 
 # List documents
 docs = db.list_documents(limit=10)
 print(f"Found {len(docs)} documents")
 
-# Query documents using natural language
-results = db.query("What is the main topic of the documents?", limit=5)
-print(f"Query results: {results}")
+# Query with search quality controls (Phase 4)
+results = db.query(
+    "What is machine learning?",
+    limit=10,
+    min_score=0.8,  # Filter out low-quality matches
+    metadata_filters={"topic": "ML"}  # Filter by metadata
+)
+
+# Results include improved citations (Phase 5)
+for result in results:
+    print(f"Text: {result['text']}")
+    print(f"Citation: {result['source_citation']}")  # Ready-to-use citation
+    print(f"URL: {result['url']}")  # Direct link at top level
+    print(f"Score: {result['score']}")  # Normalized 0-1 similarity
 
 # Clean up
 db.cleanup()

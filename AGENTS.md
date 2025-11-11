@@ -5,16 +5,27 @@ This guide helps AI agents work effectively on this codebase.
 ## Quick Reference
 
 ### Current Status
-**⚠️ MIGRATION IN PROGRESS**: Phase 1 of refactoring plan is COMPLETE
-- Check `docs/REFACTORING_PLAN.md` for full plan
-- Check `docs/MIGRATION_GUIDE.md` for Phase 1 status and next steps
-- Current phase: **Phase 1 COMPLETE** - Ready to start Phase 2
+**✅ Phases 1-8 COMPLETE** - All refactoring complete! 🎉
+
+**Completed Phases:**
+- **Phase 1** ✅: Flat parameters (no 'input' wrapper)
+- **Phase 2** ✅: Embedding at collection level only
+- **Phase 2.6** ✅: 3-step workflow (register → setup → create_collection)
+- **Phase 3** ✅: Reassembly bug fixed (overlap deduplication)
+- **Phase 4** ✅: Search quality controls (min_score, metadata_filters)
+- **Phase 5** ✅: Improved citations (url, source_citation, score)
+- **Phase 6** ✅: Enhanced error messages with actionable guidance
+- **Phase 7** ✅: Test suite updated
+- **Phase 8** ✅: Documentation updated
+
+**Future Features:** Phases 9-10 (access control) - See `docs/FEATURES_ACCESS_CONTROL.md`
 
 ### Essential Documentation
-1. **`docs/REFACTORING_PLAN.md`** - Master refactoring plan (10 phases)
-2. **`docs/MIGRATION_GUIDE.md`** - Migration status and API changes
-3. **`tests/e2e/README.md`** - E2E testing guide (CRITICAL for testing)
-4. **`README.md`** - Project overview and setup
+1. **`README.md`** - Project overview and quick start
+2. **`docs/MIGRATION_GUIDE.md`** - Complete API reference and migration guide
+3. **`docs/REFACTORING_SUMMARY.md`** - Summary of all completed phases
+4. **`tests/e2e/README.md`** - E2E testing guide (CRITICAL for testing)
+5. **`docs/DESIGN_PRINCIPLES.md`** - LLM-friendly API design principles
 
 ## Common Tasks
 
@@ -114,10 +125,12 @@ maestro-knowledge-forllm/
 │   ├── test_*.py              # Unit/integration tests
 │   └── e2e/                   # E2E tests (require -m "e2e")
 ├── docs/
-│   ├── REFACTORING_PLAN.md    # Master plan
-│   ├── MIGRATION_GUIDE.md     # Current status
-│   └── AGENTS.md              # This file
-└── examples/                   # Usage examples
+│   ├── REFACTORING_SUMMARY.md # Summary of completed phases
+│   ├── MIGRATION_GUIDE.md     # API reference & migration
+│   ├── FEATURES_ACCESS_CONTROL.md # Future features (Phases 9-10)
+│   └── DESIGN_PRINCIPLES.md   # LLM-friendly API design
+├── examples/                   # Usage examples
+└── AGENTS.md                   # This file (AI agent guide)
 ```
 
 ## Key Concepts
@@ -129,14 +142,42 @@ All tools now use **flat parameters** (Phase 1 complete):
 - Document operations: 9 tools
 - Query operations: 2 tools
 
-### Parameter Naming Convention (Phase 1)
+### Key API Changes
+
+**Phase 1 - Parameter Names:**
 - `database` (was `db_name`)
 - `database_type` (was `db_type`)
 - `collection` (was `collection_name`)
-- `document_id` (was `doc_id`)
 - `document_name` (was `doc_name`)
+- No `input` wrapper - all parameters at top level
 
-See `docs/MIGRATION_GUIDE.md` for complete parameter mapping.
+**Phase 2 - Embedding Architecture:**
+- NO `embedding` parameter in write operations
+- Embedding configured ONCE at collection creation
+- All documents in collection use same embedding model
+
+**Phase 2.6 - 3-Step Workflow:**
+```python
+# 1. Register database
+register_database(database="mydb", database_type="milvus", collection="docs")
+
+# 2. Initialize connection
+setup_database(database="mydb", embedding="text-embedding-3-small")
+
+# 3. Create collection
+create_collection(database="mydb", collection="docs", embedding="text-embedding-3-small")
+```
+
+**Phase 4 - Search Quality:**
+- `min_score` parameter (0-1) filters low-quality results
+- `metadata_filters` dict filters by document metadata
+
+**Phase 5 - Citations:**
+- `url` at top level (not just in metadata)
+- `source_citation` ready-to-use citation string
+- `score` normalized 0-1 similarity score
+
+See `docs/MIGRATION_GUIDE.md` for complete API reference.
 
 ### Testing Strategy
 1. **Unit tests**: Fast, no external services
@@ -189,14 +230,11 @@ uv run pytest tests/test_phase1_schema_validation.py -v
 
 ## Migration Progress Tracking
 
-### Phase 1: ✅ COMPLETE
-- Removed 21 Input model classes
-- Implemented flat parameters for 22 tools
-- Updated all tests (239 passing)
-- E2E tests passing (9/10 with Milvus)
+### Phase 1-8: ✅ COMPLETE
+All refactoring phases complete! See `docs/REFACTORING_SUMMARY.md` for details.
 
-### Next Phase: Phase 2
-See `docs/REFACTORING_PLAN.md` lines 117-162 for Phase 2 details.
+### Future Features: Phases 9-10
+See `docs/FEATURES_ACCESS_CONTROL.md` for ownership metadata and access control planning.
 
 ## Getting Help
 
@@ -235,9 +273,9 @@ curl http://localhost:8030/health  # MCP server
 
 ## Notes for Future Agents
 
-- Always check `docs/MIGRATION_GUIDE.md` for current migration status
+- Always check `docs/MIGRATION_GUIDE.md` for current API reference
 - E2E tests MUST use `-m "e2e"` marker
 - Server must be restarted after code changes to server.py
 - Use `uv run python` not just `python` (see start.sh)
-- Parameter names changed in Phase 1 - check migration guide
-- Test files are already updated for Phase 1 changes
+- All 8 refactoring phases are complete - see `docs/REFACTORING_SUMMARY.md`
+- Future features (Phases 9-10) are in `docs/FEATURES_ACCESS_CONTROL.md`

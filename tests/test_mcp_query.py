@@ -241,3 +241,67 @@ class TestMCPQueryIntegration:
             assert query_params2["database"] == "db2"
             assert query_params2["query"] == "Test query 2"
             assert query_params2["limit"] == 10
+
+    @pytest.mark.asyncio
+    async def test_query_with_min_score(self) -> None:
+        """Test query tool with min_score parameter (Phase 4)."""
+        with mock_resync_functions():
+            mcp_server = await create_mcp_server()
+            assert mcp_server is not None, "MCP server should be created"
+
+            # Test query parameters with min_score
+            query_params = {
+                "database": "test-db",
+                "query": "Test query",
+                "limit": 10,
+                "min_score": 0.7,
+            }
+
+            assert query_params["database"] == "test-db"
+            assert query_params["query"] == "Test query"
+            assert query_params["limit"] == 10
+            assert query_params["min_score"] == 0.7
+
+    @pytest.mark.asyncio
+    async def test_query_with_metadata_filters(self) -> None:
+        """Test query tool with metadata_filters parameter (Phase 4)."""
+        with mock_resync_functions():
+            mcp_server = await create_mcp_server()
+            assert mcp_server is not None, "MCP server should be created"
+
+            # Test query parameters with metadata_filters
+            query_params = {
+                "database": "test-db",
+                "query": "Test query",
+                "limit": 10,
+                "metadata_filters": {"language": "python", "level": "beginner"},
+            }
+
+            assert query_params["database"] == "test-db"
+            assert query_params["query"] == "Test query"
+            assert query_params["limit"] == 10
+            assert query_params["metadata_filters"]["language"] == "python"
+            assert query_params["metadata_filters"]["level"] == "beginner"
+
+    @pytest.mark.asyncio
+    async def test_query_with_combined_filters(self) -> None:
+        """Test query tool with both min_score and metadata_filters (Phase 4)."""
+        with mock_resync_functions():
+            mcp_server = await create_mcp_server()
+            assert mcp_server is not None, "MCP server should be created"
+
+            # Test query parameters with both filters
+            query_params = {
+                "database": "test-db",
+                "query": "Python programming",
+                "limit": 10,
+                "min_score": 0.8,
+                "metadata_filters": {"category": "technical", "year": 2024},
+            }
+
+            assert query_params["database"] == "test-db"
+            assert query_params["query"] == "Python programming"
+            assert query_params["limit"] == 10
+            assert query_params["min_score"] == 0.8
+            assert query_params["metadata_filters"]["category"] == "technical"
+            assert query_params["metadata_filters"]["year"] == 2024

@@ -95,9 +95,9 @@ def demonstrate_mcp_server() -> None:
             },
         ]
 
-        print("\n   Writing documents with default embedding...")
+        print("\n   Writing documents (uses collection's embedding)...")
         for doc in documents:
-            db.write_document(doc, embedding="default")
+            db.write_document(doc)
             print(f"   ✓ Wrote document: {doc['url']}")
 
         # Demonstrate Milvus with pre-computed vectors
@@ -118,7 +118,7 @@ def demonstrate_mcp_server() -> None:
                 "vector": [0.1] * 1536,  # 1536-dimensional vector
             }
 
-            milvus_db.write_document(doc_with_vector, embedding="default")
+            milvus_db.write_document(doc_with_vector)
             print("   ✓ Wrote document with pre-computed vector")
 
             # Clean up Milvus
@@ -146,8 +146,8 @@ def demonstrate_mcp_server() -> None:
                     "metadata": {"topic": "OpenAI", "author": "Eve"},
                 }
 
-                openai_db.write_document(openai_doc, embedding="text-embedding-ada-002")
-                print("   ✓ Wrote document with OpenAI embedding")
+                openai_db.write_document(openai_doc)
+                print("   ✓ Wrote document (uses collection's OpenAI embedding)")
 
                 # Clean up OpenAI collection
                 openai_db.delete_collection()
