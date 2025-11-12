@@ -260,7 +260,7 @@ async def run_query_operations_tests(client: Client, backend_name: str) -> None:
 
 
 async def run_configuration_discovery_tests(client: Client, backend_name: str) -> None:
-    """Test configuration discovery operations: get_supported_embeddings, get_supported_chunking_strategies."""
+    """Test configuration discovery operations: get_database_info with embeddings, get_supported_chunking_strategies."""
     config = get_backend_config(backend_name)
     db_name = get_db_name_for_test(backend_name, "Config_Test")
 
@@ -275,8 +275,10 @@ async def run_configuration_discovery_tests(client: Client, backend_name: str) -
     )
     assert hasattr(res, "data")
 
-    # Test get_supported_embeddings
-    res = await client.call_tool("get_supported_embeddings", {"database": db_name})
+    # Test get_database_info with include_embeddings
+    res = await client.call_tool(
+        "get_database_info", {"database": db_name, "include_embeddings": True}
+    )
     assert hasattr(res, "data")
     # Should contain embedding options (backend-specific validation)
     if backend_name == "milvus":

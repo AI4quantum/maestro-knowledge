@@ -44,7 +44,6 @@ class TestMCPServerIntegration:
         """Test that expected tools are registered in the server."""
         expected_tools = [
             "create_database",
-            "get_supported_embeddings",
             "query",
             "search",
             "list_databases",

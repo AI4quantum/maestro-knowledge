@@ -215,9 +215,9 @@ async def test_weaviate_configuration_discovery(
             assert hasattr(res, "data")
             print("✓ Created test database for configuration testing")
 
-            # Test get_supported_embeddings
+            # Test get_database_info with include_embeddings
             res = await client.call_tool(
-                "get_supported_embeddings", {"database": database}
+                "get_database_info", {"database": database, "include_embeddings": True}
             )
             assert hasattr(res, "data")
             # Backend-agnostic validation - just check we get some response

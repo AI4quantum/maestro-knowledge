@@ -572,29 +572,6 @@ async def create_mcp_server() -> FastMCP:
             return f"Error: {error_msg}"
 
     @app.tool()
-    async def get_supported_embeddings(
-        database: str = Field(..., description="Name of the vector database instance"),
-    ) -> str:
-        """
-        Get list of supported embedding models for a vector database.
-
-        NOTE: You typically don't need to call this tool. The system auto-detects the best
-        embedding model from your environment (embedding="auto" is the default).
-
-        Only use this tool if:
-        - Troubleshooting embedding configuration issues
-        - You want to explicitly choose a specific embedding model
-        - You're curious about available options
-
-        For normal operations, just use register_database() and create_collection() with
-        default parameters - they will automatically use the right embedding model.
-        """
-        db = get_database_by_name(database)
-        embeddings = db.supported_embeddings()
-
-        return f"Supported embeddings for {db.db_type} vector database '{database}': {json.dumps(embeddings, indent=2)}\n\nNOTE: The default 'auto' setting automatically selects the best embedding from your environment configuration."
-
-    @app.tool()
     async def get_supported_chunking_strategies() -> str:
         """Return the supported chunking strategies and their parameters."""
         # Keep this in sync with the src/chunking/ package defaults
@@ -1391,8 +1368,17 @@ async def create_mcp_server() -> FastMCP:
     @app.tool()
     async def get_database_info(
         database: str = Field(..., description="Name of the vector database instance"),
+        include_embeddings: bool = Field(
+            default=False,
+            description="Include list of supported embedding models in the response",
+        ),
     ) -> str:
-        """Get information about a vector database."""
+        """
+        Get information about a vector database.
+
+        Returns database type, collection name, and document count.
+        Optionally includes supported embedding models when include_embeddings=True.
+        """
         db = get_database_by_name(database)
         ok, cnt_any = await run_with_timeout(
             db.count_documents(), "count_documents", get_timeout("count_documents")
@@ -1404,6 +1390,10 @@ async def create_mcp_server() -> FastMCP:
             "collection": db.collection_name,
             "document_count": count,
         }
+
+        if include_embeddings:
+            embeddings = db.supported_embeddings()
+            info["supported_embeddings"] = embeddings
 
         return f"Database information for '{database}':\n{json.dumps(info, indent=2)}"
 

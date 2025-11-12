@@ -75,7 +75,7 @@ async def run_resync_operations_tests(client: "Client") -> None:
 async def run_configuration_discovery_tests(
     client: "Client", backend_name: str
 ) -> None:
-    """Test configuration discovery operations: get_supported_embeddings, get_supported_chunking_strategies."""
+    """Test configuration discovery operations: get_database_info with embeddings, get_supported_chunking_strategies."""
     config = get_backend_config(backend_name)
     database = get_db_name_for_test(backend_name, "Config_Test")
 
@@ -90,8 +90,10 @@ async def run_configuration_discovery_tests(
     )
     assert hasattr(res, "data")
 
-    # Test get_supported_embeddings
-    res = await client.call_tool("get_supported_embeddings", {"database": database})
+    # Test get_database_info with include_embeddings
+    res = await client.call_tool(
+        "get_database_info", {"database": database, "include_embeddings": True}
+    )
     assert hasattr(res, "data")
     # Should contain embedding options (backend-agnostic check)
     assert res.data and len(str(res.data)) > 0, f"No embeddings returned: {res.data}"
