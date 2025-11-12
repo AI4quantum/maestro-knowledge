@@ -5,7 +5,7 @@ This guide helps AI agents work effectively on this codebase.
 ## Quick Reference
 
 ### Current Status
-**✅ Phases 1-8 COMPLETE** - All refactoring complete! 🎉
+**✅ Phases 1-8.5 COMPLETE** - All refactoring complete! 🎉
 
 **Completed Phases:**
 - **Phase 1** ✅: Flat parameters (no 'input' wrapper)
@@ -17,6 +17,7 @@ This guide helps AI agents work effectively on this codebase.
 - **Phase 6** ✅: Enhanced error messages with actionable guidance
 - **Phase 7** ✅: Test suite updated
 - **Phase 8** ✅: Documentation updated
+- **Phase 8.5** ✅: LLM usability improvements (auto-detect embeddings, optional URL, 2-step workflow, better chunking defaults)
 
 **Future Features:** Phases 9-10 (access control) - See `docs/FEATURES_ACCESS_CONTROL.md`
 
@@ -156,17 +157,25 @@ All tools now use **flat parameters** (Phase 1 complete):
 - Embedding configured ONCE at collection creation
 - All documents in collection use same embedding model
 
-**Phase 2.6 - 3-Step Workflow:**
+**Phase 2.6 - 3-Step Workflow (Simplified to 2-Step in Phase 8.5):**
 ```python
-# 1. Register database
-register_database(database="mydb", database_type="milvus", collection="docs")
+# 1. Register database (now includes setup with auto-detect)
+register_database(
+    database="mydb",
+    database_type="milvus",
+    collection="docs",
+    embedding="auto"  # Optional - auto-detects from environment
+)
 
-# 2. Initialize connection
-setup_database(database="mydb", embedding="text-embedding-3-small")
-
-# 3. Create collection
-create_collection(database="mydb", collection="docs", embedding="text-embedding-3-small")
+# 2. Create collection
+create_collection(database="mydb", collection="docs")
 ```
+
+**Phase 8.5 - LLM Usability:**
+- `embedding="auto"` (default) - Auto-detects custom embeddings from environment
+- `url` parameter optional in `write_document()` - Auto-generated from text hash if empty
+- Default chunking changed from "None" to "Sentence" (512 chars, respects sentence boundaries)
+- `collection` parameter added to `write_document()` for targeting specific collections
 
 **Phase 4 - Search Quality:**
 - `min_score` parameter (0-1) filters low-quality results
@@ -230,7 +239,7 @@ uv run pytest tests/test_phase1_schema_validation.py -v
 
 ## Migration Progress Tracking
 
-### Phase 1-8: ✅ COMPLETE
+### Phase 1-8.5: ✅ COMPLETE
 All refactoring phases complete! See `docs/REFACTORING_SUMMARY.md` for details.
 
 ### Future Features: Phases 9-10

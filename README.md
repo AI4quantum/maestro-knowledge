@@ -26,10 +26,12 @@ Maestro Knowledge supports multiple document chunking strategies to optimize how
 
 ### Available Strategies
 
-- **None**: No chunking performed (default)
+- **Sentence**: Split documents at sentence boundaries with size limits (default, 512 chars)
 - **Fixed**: Split documents into fixed-size chunks with optional overlap
-- **Sentence**: Split documents at sentence boundaries with size limits  
 - **Semantic**: Identifies semantic boundaries using sentence embeddings
+- **None**: No chunking performed (use for small documents only)
+
+**Note**: The default chunking strategy changed from "None" to "Sentence" in Phase 8.5 to better handle large documents automatically.
 
 ### Semantic Chunking
 
@@ -291,6 +293,22 @@ The project includes a Model Context Protocol (MCP) server that exposes vector d
 # After restarting the MCP server, run the resync to register existing Milvus collections:
 maestro resync-databases
 ```
+
+**Embedding Auto-Detection (Phase 8.5):**
+
+The MCP server now automatically detects custom embeddings from environment variables:
+
+```bash
+# Set custom embedding configuration (e.g., for Ollama)
+export CUSTOM_EMBEDDING_URL="http://localhost:11434/api/embeddings"
+export CUSTOM_EMBEDDING_MODEL="nomic-embed-text"
+export CUSTOM_EMBEDDING_VECTORSIZE="768"
+
+# Start server - will auto-detect and use custom embeddings
+./start.sh
+```
+
+When these environment variables are set, the server uses `custom_local` embeddings automatically. Otherwise, it falls back to OpenAI embeddings. This eliminates the need to specify embedding models in every API call.
 
 ### Search and Query Output
 

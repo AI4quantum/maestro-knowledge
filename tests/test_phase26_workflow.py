@@ -93,15 +93,17 @@ class TestPhase26Workflow:
 
         tools = await server.get_tools()
 
-        # Step 1: Register database
-        result1 = await tools["register_database"].fn(
-            database="test_milvus",
-            database_type="milvus",
-            collection="docs",
-        )
-        assert "Successfully registered" in result1
+        # Step 1: Register database (now includes setup)
+        with patch("src.db.vector_db_milvus.MilvusVectorDatabase.setup") as mock_setup:
+            mock_setup.return_value = None
+            result1 = await tools["register_database"].fn(
+                database="test_milvus",
+                database_type="milvus",
+                collection="docs",
+            )
+            assert "Successfully created and initialized" in result1
 
-        # Step 2: Setup database connection
+        # Step 2: Setup database connection (deprecated but still works)
         with patch("src.db.vector_db_milvus.MilvusVectorDatabase.setup") as mock_setup:
             mock_setup.return_value = None
             result2 = await tools["setup_database"].fn(
@@ -140,14 +142,18 @@ class TestPhase26Workflow:
 
         tools = await server.get_tools()
 
-        # Step 1: Register database
+        # Step 1: Register database (now includes setup)
         with patch.dict("os.environ", weaviate_env):
-            result1 = await tools["register_database"].fn(
-                database="test_weaviate",
-                database_type="weaviate",
-                collection="docs",
-            )
-        assert "Successfully registered" in result1
+            with patch(
+                "src.db.vector_db_weaviate.WeaviateVectorDatabase.setup"
+            ) as mock_setup:
+                mock_setup.return_value = None
+                result1 = await tools["register_database"].fn(
+                    database="test_weaviate",
+                    database_type="weaviate",
+                    collection="docs",
+                )
+        assert "Successfully created and initialized" in result1
 
         # Step 2: Setup database connection
         with patch(
@@ -186,11 +192,11 @@ class TestPhase26Workflow:
 
         tools = await server.get_tools()
 
-        # Verify register_database exists
+        # Verify register_database exists and now includes initialization
         result = await tools["register_database"].fn(
             database="test_db", database_type="milvus", collection="docs"
         )
-        assert "Successfully registered" in result
+        assert "Successfully created and initialized" in result
 
         # Verify old name doesn't exist
         assert "create_vector_database_tool" not in tools

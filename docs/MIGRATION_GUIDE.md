@@ -1,10 +1,8 @@
 # Migration Guide: Maestro Knowledge LLM-Friendly Refactoring
 
-> **⚠️ MIGRATION IN PROGRESS**
+> **✅ REFACTORING COMPLETE**
 >
-> **Current Status**: Phase 1 & 2 COMPLETE ✅
->
-> **Next Phase**: Phase 3 (Bug Fixes) - See `docs/REFACTORING_PLAN.md`
+> **Current Status**: Phases 1-8.5 COMPLETE ✅ (2025-01-12)
 >
 > **For AI Agents**: Check `docs/AGENTS.md` for development tips and common pitfalls
 
@@ -22,47 +20,61 @@
 | Phase 6 | ✅ COMPLETE | Enhance error messages | NO - Backward compatible |
 | Phase 7 | ✅ COMPLETE | Update test suite | NO |
 | Phase 8 | ✅ COMPLETE | Update documentation | NO |
+| Phase 8.5 | ✅ COMPLETE | LLM usability improvements | NO - Backward compatible |
 | Phase 9 | 📋 PLANNED | Add ownership metadata | NO |
 | Phase 10 | 📋 PLANNED | Implement access control | NO |
 
-## Current API Reference (Post-Phase 6)
+## Current API Reference (Post-Phase 8.5)
 
-**All changes from Phases 1-6 are now in effect.** Use this as your reference for current usage:
+**All changes from Phases 1-8.5 are now in effect.** Use this as your reference for current usage:
 
-### 3-Step Database Setup (Phase 2.6)
+### 2-Step Database Setup (Phase 8.5 - Simplified)
 
 ```python
-# Step 1: Register database instance
+# Step 1: Register database (now includes setup with auto-detect)
 await register_database(
     database="mydb",
     database_type="milvus",
-    collection="docs"
+    collection="docs",
+    embedding="auto"  # Optional - auto-detects from environment
 )
 
-# Step 2: Initialize connection with embedding model
-await setup_database(
-    database="mydb",
-    embedding="text-embedding-3-small"
-)
-
-# Step 3: Create collection
+# Step 2: Create collection
 await create_collection(
     database="mydb",
     collection="docs",
-    embedding="text-embedding-3-small"
+    embedding="auto"  # Optional - auto-detects from environment
 )
 ```
 
-### Writing Documents (Phase 2)
+**Auto-Detection:** When `embedding="auto"` (the default), the system checks for:
+- `CUSTOM_EMBEDDING_URL` - URL of custom embedding service (e.g., `http://localhost:11434/api/embeddings`)
+- `CUSTOM_EMBEDDING_MODEL` - Model name (e.g., `nomic-embed-text`)
+- `CUSTOM_EMBEDDING_VECTORSIZE` - Vector dimension (e.g., `768`)
+
+If all three are set, uses `custom_local`. Otherwise, falls back to OpenAI `text-embedding-ada-002`.
+
+### Writing Documents (Phase 2 & 8.5)
 
 ```python
 # No embedding parameter - uses collection's embedding model
+# URL is now optional - auto-generated from text hash if empty
 await write_documents(
     database="mydb",
     documents=[
         {"url": "https://example.com/doc.html"},
+        {"text": "Direct text without URL"},  # URL auto-generated
         {"url": "doc2", "text": "Direct text", "metadata": {"author": "Alice"}}
     ]
+)
+
+# Single document write with optional collection parameter
+await write_document(
+    database="mydb",
+    text="Document content",
+    url="",  # Optional - auto-generated if empty
+    collection="docs",  # Optional - uses last created if not specified
+    metadata={"author": "Bob"}
 )
 ```
 

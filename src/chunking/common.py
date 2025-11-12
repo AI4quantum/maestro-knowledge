@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class ChunkingConfig:
-    strategy: str = "None"
+    strategy: str = "Sentence"
     parameters: dict[str, object] | None = None
 
     def __post_init__(self) -> None:
@@ -48,6 +48,7 @@ def chunk_text(
         raise ValueError(f"Unknown chunking strategy: {strategy}")
 
     # apply defaults when strategy is set and parameters missing
+    params: dict[str, object]
     if strategy != "None":
         if strategy == "Semantic":
             params = {"chunk_size": 768, "overlap": 0}
