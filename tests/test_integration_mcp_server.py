@@ -43,8 +43,7 @@ class TestMCPServerIntegration:
     async def test_server_tool_registration(self) -> None:
         """Test that expected tools are registered in the server."""
         expected_tools = [
-            "create_vector_database",
-            "setup_database",
+            "create_database",
             "get_supported_embeddings",
             "query",
             "search",

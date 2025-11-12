@@ -301,26 +301,17 @@ async def run_configuration_discovery_tests(client: Client, backend_name: str) -
 
 
 async def run_document_retrieval_tests(client: Client, backend_name: str) -> None:
-    """Test document retrieval operations: setup_database, get_document."""
+    """Test document retrieval operations: get_document."""
     config = get_backend_config(backend_name)
     db_name = get_db_name_for_test(backend_name, "Doc_Retrieval")
 
-    # First create the database (setup_database requires database to exist first)
+    # Create the database (now includes setup)
     res = await client.call_tool(
         "create_database",
         {
             "database": db_name,
             "database_type": config["db_type"],
             "collection": f"{db_name}_Collection",
-        },
-    )
-    assert hasattr(res, "data")
-
-    # Test setup_database (for existing database configuration)
-    res = await client.call_tool(
-        "setup_database",
-        {
-            "database": db_name,
         },
     )
     assert hasattr(res, "data")

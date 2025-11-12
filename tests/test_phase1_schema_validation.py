@@ -121,7 +121,6 @@ async def test_all_tools_accessible() -> None:
 
     expected_tools = [
         "create_database",
-        "setup_database",
         "get_supported_embeddings",
         "get_supported_chunking_strategies",
         "write_documents",

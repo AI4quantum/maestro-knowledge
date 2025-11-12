@@ -56,7 +56,6 @@ async def test_tool_definitions() -> None:
             # Get the tool definitions from the server
             expected_tools = [
                 "create_database",
-                "setup_database",
                 "get_supported_embeddings",
                 "write_documents",
                 "write_document",
