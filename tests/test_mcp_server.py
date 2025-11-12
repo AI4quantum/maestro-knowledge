@@ -55,7 +55,7 @@ async def test_tool_definitions() -> None:
 
             # Get the tool definitions from the server
             expected_tools = [
-                "create_vector_database",
+                "create_database",
                 "setup_database",
                 "get_supported_embeddings",
                 "write_documents",
@@ -65,7 +65,7 @@ async def test_tool_definitions() -> None:
                 "delete_documents",
                 "delete_document",
                 "delete_collection",
-                "cleanup",
+                "delete_database",
                 "get_database_info",
                 "list_collections",
                 "list_databases",

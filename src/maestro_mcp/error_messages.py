@@ -25,7 +25,7 @@ class ErrorMessages:
 Available databases: {available_str}
 
 To create a new database:
-1. Register: register_database(database="{db_name}", database_type="milvus", collection="default")
+1. Register: create_database(database="{db_name}", database_type="milvus", collection="default")
 2. Initialize: setup_database(database="{db_name}", embedding="default")
 3. Create collection: create_collection(database="{db_name}", collection="default")"""
 
@@ -101,7 +101,7 @@ get_supported_embeddings(database="your_database")"""
 Supported types: 'milvus', 'weaviate'
 
 Example:
-register_database(database="mydb", database_type="milvus", collection="default")"""
+create_database(database="mydb", database_type="milvus", collection="default")"""
 
     @staticmethod
     def document_not_found(document_name: str, collection: str, database: str) -> str:

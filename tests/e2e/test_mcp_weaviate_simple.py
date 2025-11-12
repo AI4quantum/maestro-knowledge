@@ -143,7 +143,7 @@ async def test_weaviate_database_management(mcp_http_server: dict[str, Any]) -> 
 
         # Create vector DB
         res = await client.call_tool(
-            "register_database",
+            "create_database",
             {
                 "database": database,
                 "database_type": "weaviate",  # Only difference from Milvus
@@ -165,7 +165,7 @@ async def test_weaviate_database_management(mcp_http_server: dict[str, Any]) -> 
         assert hasattr(res, "data")
 
         # Cleanup
-        res = await client.call_tool("cleanup", {"database": database})
+        res = await client.call_tool("delete_database", {"database": database})
         assert hasattr(res, "data")
 
 
@@ -205,7 +205,7 @@ async def test_weaviate_configuration_discovery(
 
             # Create a test database first
             res = await client.call_tool(
-                "register_database",
+                "create_database",
                 {
                     "database": database,
                     "database_type": "weaviate",  # Only difference from Milvus
@@ -239,7 +239,7 @@ async def test_weaviate_configuration_discovery(
             print("✓ Got supported chunking strategies")
 
             # Cleanup
-            res = await client.call_tool("cleanup", {"database": database})
+            res = await client.call_tool("delete_database", {"database": database})
             assert hasattr(res, "data")
             print("✓ Configuration discovery tests completed")
 
@@ -257,9 +257,9 @@ async def test_weaviate_resync_operations(mcp_http_server: dict[str, Any]) -> No
     base_mcp_url = f"http://{host}:{port}/mcp/"
 
     async with Client(base_mcp_url, timeout=300) as client:
-        # Test resync_databases_tool (note: no input parameter needed)
-        res = await client.call_tool("resync_databases_tool")
-        assert hasattr(res, "data"), f"resync_databases_tool failed: {res}"
+        # Test refresh_databases (note: no input parameter needed)
+        res = await client.call_tool("refresh_databases")
+        assert hasattr(res, "data"), f"refresh_databases failed: {res}"
 
         # Validate the response indicates successful execution
         result_data = res.data if hasattr(res, "data") else ""

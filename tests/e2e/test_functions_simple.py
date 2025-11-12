@@ -26,7 +26,7 @@ async def run_database_management_tests(client: "Client", backend_name: str) -> 
 
     # Test create_vector_database_tool
     res = await client.call_tool(
-        "register_database",
+        "create_database",
         {
             "database": database,
             "database_type": config["db_type"],
@@ -55,15 +55,15 @@ async def run_database_management_tests(client: "Client", backend_name: str) -> 
     assert hasattr(res, "data"), f"get_collection_info failed: {res}"
 
     # Cleanup
-    res = await client.call_tool("cleanup", {"database": database})
+    res = await client.call_tool("delete_database", {"database": database})
     assert hasattr(res, "data"), f"cleanup failed: {res}"
 
 
 async def run_resync_operations_tests(client: "Client") -> None:
     """Test database resynchronization functionality."""
-    # Test resync_databases_tool (note: no input parameter needed)
-    res = await client.call_tool("resync_databases_tool")
-    assert hasattr(res, "data"), f"resync_databases_tool failed: {res}"
+    # Test refresh_databases (note: no input parameter needed)
+    res = await client.call_tool("refresh_databases")
+    assert hasattr(res, "data"), f"refresh_databases failed: {res}"
 
     # Validate the response indicates successful execution
     result_data = res.data if hasattr(res, "data") else ""
@@ -81,7 +81,7 @@ async def run_configuration_discovery_tests(
 
     # Create a test database first
     res = await client.call_tool(
-        "register_database",
+        "create_database",
         {
             "database": database,
             "database_type": config["db_type"],
@@ -108,5 +108,5 @@ async def run_configuration_discovery_tests(
     )
 
     # Cleanup
-    res = await client.call_tool("cleanup", {"database": database})
+    res = await client.call_tool("delete_database", {"database": database})
     assert hasattr(res, "data")

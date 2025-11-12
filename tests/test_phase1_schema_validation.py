@@ -67,7 +67,7 @@ async def test_flat_parameters_in_sample_tools() -> None:
 
     # Test a sample of critical tools
     tools_to_test = [
-        ("register_database", ["database", "database_type", "collection"]),
+        ("create_database", ["database", "database_type", "collection"]),
         ("query", ["database", "query", "limit", "collection"]),
         ("search", ["database", "query", "limit", "collection"]),
         ("write_documents", ["database", "documents", "embedding"]),
@@ -120,7 +120,7 @@ async def test_all_tools_accessible() -> None:
     server = await create_mcp_server()
 
     expected_tools = [
-        "register_database",
+        "create_database",
         "setup_database",
         "get_supported_embeddings",
         "get_supported_chunking_strategies",
@@ -135,7 +135,7 @@ async def test_all_tools_accessible() -> None:
         "delete_document_from_collection",
         "get_document",
         "delete_collection",
-        "cleanup",
+        "delete_database",
         "get_database_info",
         "list_collections",
         "get_collection_info",
@@ -143,7 +143,7 @@ async def test_all_tools_accessible() -> None:
         "query",
         "search",
         "list_databases",
-        "resync_databases_tool",
+        "refresh_databases",
     ]
 
     tool_names = [t.name for t in await server._list_tools()]

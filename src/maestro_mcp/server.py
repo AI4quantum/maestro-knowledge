@@ -456,7 +456,7 @@ async def create_mcp_server() -> FastMCP:
         )
 
     @app.tool()
-    async def register_database(
+    async def create_database(
         database: str = Field(
             ..., description="Unique name for the vector database instance"
         ),
@@ -479,7 +479,7 @@ async def create_mcp_server() -> FastMCP:
         ),
     ) -> str:
         """
-        Register and initialize a vector database instance in one step.
+        Create and initialize a vector database instance in one step.
 
         This combines registration and connection initialization for simplicity.
         The database is ready to use after this call - just create collections and write documents.
@@ -1449,12 +1449,12 @@ async def create_mcp_server() -> FastMCP:
             return f"Delete collection failed: {str(e)}"
 
     @app.tool()
-    async def cleanup(
+    async def delete_database(
         database: str = Field(
-            ..., description="Name of the vector database instance to clean up"
+            ..., description="Name of the vector database instance to delete"
         ),
     ) -> str:
-        """Clean up resources and close connections for a vector database."""
+        """Delete a vector database and clean up all resources."""
         if database in vector_databases:
             db = get_database_by_name(database)
             ok, _ = await run_with_timeout(
@@ -1835,8 +1835,8 @@ async def create_mcp_server() -> FastMCP:
         return f"Available vector databases:\n{json.dumps(db_list, indent=2)}"
 
     @app.tool()
-    async def resync_databases_tool() -> str:
-        """Discover and register Milvus collections into the MCP server's in-memory registry."""
+    async def refresh_databases() -> str:
+        """Discover and register Milvus and Weaviate collections into the MCP server's in-memory registry."""
         try:
             added_milvus = await resync_vector_databases()
             added_weaviate = await resync_weaviate_databases()

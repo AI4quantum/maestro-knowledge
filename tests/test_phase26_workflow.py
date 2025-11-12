@@ -6,7 +6,7 @@
 Tests for Phase 2.6: Separated Database Setup from Collection Creation
 
 Tests the new 3-step workflow:
-1. register_database() - Register database instance
+1. create_database() - Register database instance
 2. setup_database() - Initialize connection
 3. create_collection() - Create collections
 
@@ -56,7 +56,7 @@ class TestPhase26Workflow:
         # Phase 6: New error message format (no "Error:" prefix)
         assert "not found" in result.lower()
         assert "unregistered_db" in result
-        assert "register_database" in result
+        assert "create_database" in result
 
     async def test_create_collection_requires_registration(self) -> None:
         """Test that create_collection validates database is registered."""
@@ -84,7 +84,7 @@ class TestPhase26Workflow:
         # Phase 6: New error message format (no "Error:" prefix)
         assert "not found" in result.lower()
         assert "unregistered_db" in result
-        assert "register_database" in result
+        assert "create_database" in result
 
     async def test_complete_workflow_milvus(self) -> None:
         """Test the complete 3-step workflow for Milvus."""
@@ -96,7 +96,7 @@ class TestPhase26Workflow:
         # Step 1: Register database (now includes setup)
         with patch("src.db.vector_db_milvus.MilvusVectorDatabase.setup") as mock_setup:
             mock_setup.return_value = None
-            result1 = await tools["register_database"].fn(
+            result1 = await tools["create_database"].fn(
                 database="test_milvus",
                 database_type="milvus",
                 collection="docs",
@@ -148,7 +148,7 @@ class TestPhase26Workflow:
                 "src.db.vector_db_weaviate.WeaviateVectorDatabase.setup"
             ) as mock_setup:
                 mock_setup.return_value = None
-                result1 = await tools["register_database"].fn(
+                result1 = await tools["create_database"].fn(
                     database="test_weaviate",
                     database_type="weaviate",
                     collection="docs",
@@ -183,17 +183,17 @@ class TestPhase26Workflow:
                 assert "Successfully created" in result3
                 mock_create.assert_called_once()
 
-    async def test_register_database_renamed_from_create_vector_database_tool(
+    async def test_create_database_renamed_from_create_vector_database_tool(
         self,
     ) -> None:
-        """Test that register_database is the new name for create_vector_database_tool."""
+        """Test that create_database is the new name for create_vector_database_tool."""
         with mock_resync_functions():
             server = await create_mcp_server()
 
         tools = await server.get_tools()
 
-        # Verify register_database exists and now includes initialization
-        result = await tools["register_database"].fn(
+        # Verify create_database exists and now includes initialization
+        result = await tools["create_database"].fn(
             database="test_db", database_type="milvus", collection="docs"
         )
         assert "Successfully created and initialized" in result
@@ -209,7 +209,7 @@ class TestPhase26Workflow:
         tools = await server.get_tools()
 
         # Register database
-        await tools["register_database"].fn(
+        await tools["create_database"].fn(
             database="test_db", database_type="milvus", collection="docs"
         )
 
@@ -235,7 +235,7 @@ class TestPhase26Workflow:
         tools = await server.get_tools()
 
         # Register and setup
-        await tools["register_database"].fn(
+        await tools["create_database"].fn(
             database="test_db", database_type="milvus", collection="docs"
         )
 
@@ -276,7 +276,7 @@ class TestPhase26Workflow:
         tools = await server.get_tools()
 
         # Register and setup
-        await tools["register_database"].fn(
+        await tools["create_database"].fn(
             database="test_db", database_type="milvus", collection="docs"
         )
 
@@ -309,7 +309,7 @@ class TestPhase26Workflow:
             database="nonexistent", embedding="default"
         )
         assert "not found" in result1.lower()
-        assert "register_database" in result1
+        assert "create_database" in result1
         assert "nonexistent" in result1
 
         # Test create_collection error message - Phase 6: Enhanced error messages
@@ -317,7 +317,7 @@ class TestPhase26Workflow:
             database="nonexistent", collection="test", embedding="default"
         )
         assert "not found" in result2.lower()
-        assert "register_database" in result2
+        assert "create_database" in result2
         assert "nonexistent" in result2
 
 

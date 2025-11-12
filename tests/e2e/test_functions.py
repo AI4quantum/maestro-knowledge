@@ -26,7 +26,7 @@ async def run_database_management_tests(client: Client, backend_name: str) -> No
 
     # Test create_vector_database_tool
     res = await client.call_tool(
-        "register_database",
+        "create_database",
         {
             "database": db_name,
             "database_type": config["db_type"],
@@ -66,7 +66,7 @@ async def run_database_management_tests(client: Client, backend_name: str) -> No
     assert hasattr(res, "data"), f"get_database_info failed: {res}"
 
     # Cleanup
-    res = await client.call_tool("cleanup", {"database": db_name})
+    res = await client.call_tool("delete_database", {"database": db_name})
     assert hasattr(res, "data"), f"cleanup failed: {res}"
 
 
@@ -77,7 +77,7 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
 
     # Setup
     res = await client.call_tool(
-        "register_database",
+        "create_database",
         {
             "database": db_name,
             "database_type": config["db_type"],
@@ -178,7 +178,7 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
             assert res, f"delete_document failed: {res}"
 
     # Cleanup
-    res = await client.call_tool("cleanup", {"database": db_name})
+    res = await client.call_tool("delete_database", {"database": db_name})
     if not hasattr(res, "data") and isinstance(res, str):
         assert res, f"cleanup failed: {res}"
 
@@ -190,7 +190,7 @@ async def run_query_operations_tests(client: Client, backend_name: str) -> None:
 
     # Setup
     res = await client.call_tool(
-        "register_database",
+        "create_database",
         {
             "database": db_name,
             "database_type": config["db_type"],
@@ -255,7 +255,7 @@ async def run_query_operations_tests(client: Client, backend_name: str) -> None:
     assert hasattr(res, "data") or hasattr(res, "content"), f"query failed: {res}"
 
     # Cleanup
-    res = await client.call_tool("cleanup", {"database": db_name})
+    res = await client.call_tool("delete_database", {"database": db_name})
     assert hasattr(res, "data")
 
 
@@ -266,7 +266,7 @@ async def run_configuration_discovery_tests(client: Client, backend_name: str) -
 
     # Create a test database first
     res = await client.call_tool(
-        "register_database",
+        "create_database",
         {
             "database": db_name,
             "database_type": config["db_type"],
@@ -296,7 +296,7 @@ async def run_configuration_discovery_tests(client: Client, backend_name: str) -
     )
 
     # Cleanup
-    res = await client.call_tool("cleanup", {"database": db_name})
+    res = await client.call_tool("delete_database", {"database": db_name})
     assert hasattr(res, "data")
 
 
@@ -307,7 +307,7 @@ async def run_document_retrieval_tests(client: Client, backend_name: str) -> Non
 
     # First create the database (setup_database requires database to exist first)
     res = await client.call_tool(
-        "register_database",
+        "create_database",
         {
             "database": db_name,
             "database_type": config["db_type"],
@@ -367,7 +367,7 @@ async def run_document_retrieval_tests(client: Client, backend_name: str) -> Non
             assert hasattr(res, "data")
 
     # Cleanup
-    res = await client.call_tool("cleanup", {"database": db_name})
+    res = await client.call_tool("delete_database", {"database": db_name})
     assert hasattr(res, "data")
 
 
@@ -378,7 +378,7 @@ async def run_bulk_operations_tests(client: Client, backend_name: str) -> None:
 
     # Setup
     res = await client.call_tool(
-        "register_database",
+        "create_database",
         {
             "database": db_name,
             "database_type": config["db_type"],
@@ -429,7 +429,7 @@ async def run_bulk_operations_tests(client: Client, backend_name: str) -> None:
             assert hasattr(res, "data")
 
     # Cleanup
-    res = await client.call_tool("cleanup", {"database": db_name})
+    res = await client.call_tool("delete_database", {"database": db_name})
     assert hasattr(res, "data")
 
 
@@ -449,7 +449,7 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
     try:
         # Setup
         res = await client.call_tool(
-            "register_database",
+            "create_database",
             {
                 "database": db_name,
                 "database_type": config["db_type"],
@@ -572,16 +572,16 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
         # Always cleanup if we created resources
         if needs_cleanup:
             try:
-                res = await client.call_tool("cleanup", {"database": db_name})
+                res = await client.call_tool("delete_database", {"database": db_name})
             except Exception:
                 pass
 
 
 async def run_resync_operations_tests(client: Client, backend_name: str) -> None:
     """Test database resynchronization functionality."""
-    # Test resync_databases_tool
-    res = await client.call_tool("resync_databases_tool")
-    assert hasattr(res, "data"), f"resync_databases_tool failed: {res}"
+    # Test refresh_databases
+    res = await client.call_tool("refresh_databases")
+    assert hasattr(res, "data"), f"refresh_databases failed: {res}"
 
     # Validate the response indicates successful execution
     # Note: For MCP-created collections, this might return 0 discoveries
@@ -643,7 +643,7 @@ async def run_full_flow_test(client: Client, backend_name: str) -> None:
     try:
         # Create vector DB
         res = await client.call_tool(
-            "register_database",
+            "create_database",
             {
                 "database": db_name,
                 "database_type": config["db_type"],
@@ -737,6 +737,6 @@ async def run_full_flow_test(client: Client, backend_name: str) -> None:
     finally:
         # Cleanup
         try:
-            res = await client.call_tool("cleanup", {"database": db_name})
+            res = await client.call_tool("delete_database", {"database": db_name})
         except Exception:
             pass
