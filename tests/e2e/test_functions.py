@@ -159,10 +159,12 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
             docs_list = []
     assert docs_list is not None, f"list_documents failed: {res}"
 
-    # Test count_documents
-    res = await client.call_tool("count_documents", {"database": db_name})
+    # Test get_collection_info with count
+    res = await client.call_tool(
+        "get_collection_info", {"database": db_name, "include_count": True}
+    )
     if not hasattr(res, "data") and isinstance(res, str):
-        assert res, f"count_documents failed: {res}"
+        assert res, f"get_collection_info with count failed: {res}"
 
     # Test delete_document (get a document ID first from list_documents)
     first_doc_id = None
@@ -702,10 +704,14 @@ async def run_full_flow_test(client: Client, backend_name: str) -> None:
         if not hasattr(res, "data"):
             pytest.fail(f"list_documents failed for {backend_name}: {res}")
 
-        # Count documents
-        res = await client.call_tool("count_documents", {"database": db_name})
+        # Count documents via get_collection_info
+        res = await client.call_tool(
+            "get_collection_info", {"database": db_name, "include_count": True}
+        )
         if not hasattr(res, "data"):
-            pytest.fail(f"count_documents failed for {backend_name}: {res}")
+            pytest.fail(
+                f"get_collection_info with count failed for {backend_name}: {res}"
+            )
 
         # Get collection info
         res = await client.call_tool("get_collection_info", {"database": db_name})

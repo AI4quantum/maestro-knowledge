@@ -1422,6 +1422,10 @@ async def create_mcp_server() -> FastMCP:
             default=None,
             description="Name of the collection to get info for. If not provided, uses the default collection.",
         ),
+        include_count: bool = Field(
+            default=False,
+            description="Include document count in the response",
+        ),
     ) -> str:
         """Get information about a collection in a vector database."""
         db = get_database_by_name(database)
@@ -1442,6 +1446,15 @@ async def create_mcp_server() -> FastMCP:
         if not ok:
             return str(info_any)
         info: dict[str, Any] = cast("dict[str, Any]", info_any)
+
+        # Add document count if requested
+        if include_count:
+            ok_count, count_any = await run_with_timeout(
+                db.count_documents(), "count_documents", get_timeout("read")
+            )
+            if ok_count:
+                count = int(count_any) if count_any is not None else 0
+                info["document_count"] = count
 
         return (
             f"Collection information for '{info.get('name')}' in vector database "
