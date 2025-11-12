@@ -123,26 +123,6 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
             res_data = res
         assert res_data, f"write_documents failed: {res}"
 
-    # Test write_document - LOW PRIORITY addition (individual document write)
-    res = await client.call_tool(
-        "write_document",
-        {
-            "database": db_name,
-            "text": f"This is a single document for {backend_name.title()}",
-            "url": "https://example.com/single-doc",
-            "metadata": {"source": "single_write_test", "backend": backend_name},
-        },
-    )
-    # Accept string or object response for write_document
-    if not hasattr(res, "data"):
-        import json
-
-        try:
-            res_data = json.loads(res) if isinstance(res, str) else res
-        except Exception:
-            res_data = res
-        assert res_data, f"write_document failed: {res}"
-
     # Test list_documents
     res = await client.call_tool(
         "list_documents", {"database": db_name, "limit": 10, "offset": 0}
@@ -489,22 +469,26 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
             # Instead of skipping, just return early to avoid pytest skip complications
             return
 
-        # Test write_document_to_collection
+        # Test write_documents (replaces write_document_to_collection)
         res = await client.call_tool(
-            "write_document_to_collection",
+            "write_documents",
             {
                 "database": db_name,
-                "collection": collection_name,
-                "document_name": doc_name,
-                "text": f"This is a collection-specific document for {backend_name.title()}",
-                "url": "https://example.com/collection-doc",
-                "metadata": {"source": "collection_test", "backend": backend_name},
+                "documents": [
+                    {
+                        "url": "https://example.com/collection-doc",
+                        "text": f"This is a collection-specific document for {backend_name.title()}",
+                        "metadata": {
+                            "source": "collection_test",
+                            "backend": backend_name,
+                            "doc_name": doc_name,
+                        },
+                    }
+                ],
             },
         )
         if not hasattr(res, "data"):
-            pytest.fail(
-                f"write_document_to_collection failed for {backend_name}: {res}"
-            )
+            pytest.fail(f"write_documents failed for {backend_name}: {res}")
 
         # Test list_documents_in_collection
         res = await client.call_tool(

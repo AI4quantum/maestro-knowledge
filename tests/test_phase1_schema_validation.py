@@ -123,8 +123,6 @@ async def test_all_tools_accessible() -> None:
         "create_database",
         "get_supported_chunking_strategies",
         "write_documents",
-        "write_document",
-        "write_document_to_collection",
         "list_documents",
         "list_documents_in_collection",
         "delete_documents",

@@ -57,7 +57,6 @@ async def test_tool_definitions() -> None:
             expected_tools = [
                 "create_database",
                 "write_documents",
-                "write_document",
                 "list_documents",
                 "delete_documents",
                 "delete_document",
