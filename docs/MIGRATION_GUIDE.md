@@ -12,11 +12,12 @@ The Maestro Knowledge MCP server has been redesigned to be more intuitive and re
 
 1. **Structured JSON Responses** - All tools now return consistent JSON instead of plain text
 2. **Simplified Tool Set** - Reduced from 22 to 11 active tools by consolidating related functionality
-3. **Auto-Bootstrap** - Collections auto-create database connections (Phase 8.5)
+3. **Auto-Bootstrap** - Collections auto-create database connections
 4. **Auto-Detection** - Embedding models auto-detected from environment
-5. **Safety Features** - Destructive operations require explicit confirmation
-6. **Consistent Naming** - Standardized parameter names across all tools
-7. **Better Error Messages** - Error codes and actionable suggestions included
+5. **Simplified Responses** - Removed confusing "database" terminology from responses
+6. **Safety Features** - Destructive operations require explicit confirmation
+7. **Consistent Naming** - Standardized parameter names across all tools
+8. **Better Error Messages** - Error codes and actionable suggestions included
 
 ## Breaking Changes
 
@@ -147,13 +148,13 @@ embeddings = response["data"]["supported_embeddings"]
 chunking = response["data"]["supported_chunking"]
 ```
 
-## Phase 8.5 Improvements (2025-01-13)
+## Recent Improvements (2025-01-13)
 
 ### Auto-Bootstrap Database Connections
 
 **What Changed:** Collections now automatically create database connections when needed.
 
-**Before (Phase 2.6):**
+**Before:**
 ```python
 # Step 1: Register database
 await client.call_tool("register_database", {
@@ -173,7 +174,7 @@ await client.call_tool("create_collection", {
 })
 ```
 
-**After (Phase 8.5):**
+**After:**
 ```python
 # Single step: Create collection (auto-bootstraps connection)
 await client.call_tool("create_collection", {
@@ -264,6 +265,49 @@ await client.call_tool("write_documents", {
 
 **Configuration (2 tools):**
 - `get_config` - Get system configuration and capabilities
+### Simplified Response Structure
+
+**What Changed:** Removed "database" terminology from user-facing responses to eliminate LLM confusion.
+
+**Problem:** LLMs were confused by "database" references in responses, thinking collections existed inside parent databases. This contradicted the auto-bootstrap architecture where collections ARE the databases.
+
+**Solution:** 
+- Removed `"database"` field from response data (kept in metadata for debugging)
+- Removed "in database" phrasing from messages and errors
+- Marked `database` parameter as "**Internal use only**" in docstrings
+
+**Before:**
+```json
+{
+  "status": "success",
+  "data": {
+    "collection": "docs",
+    "database": "mydb",  // Confused LLMs
+    "document_count": 42
+  }
+}
+```
+
+**After:**
+```json
+{
+  "status": "success",
+  "data": {
+    "collection": "docs",
+    "document_count": 42
+  },
+  "metadata": {
+    "database": "mydb"  // Internal tracking only
+  }
+}
+```
+
+**Benefits:**
+- Clearer mental model: Collections are the primary entity
+- No confusion about database hierarchy
+- Backward compatible: API unchanged, only documentation improved
+- Internal tracking preserved in metadata for debugging
+
 - `refresh_databases` - Sync with backend databases
 
 **Collection Management (3 tools):**

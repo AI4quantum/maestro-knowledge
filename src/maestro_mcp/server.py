@@ -845,7 +845,7 @@ async def create_mcp_server() -> FastMCP:
         collection_total_docs = None
         try:
             ok, post_info_any = await run_with_timeout(
-                db.get_collection_info(),
+                db.get_collection_info(collection),
                 "get_collection_info",
                 get_timeout("get_collection_info"),
             )
@@ -993,13 +993,13 @@ async def create_mcp_server() -> FastMCP:
         if collection not in collections:
             return error_response(
                 error_code="COLL_NOT_FOUND",
-                message=f"Collection '{collection}' not found in database '{database}'",
+                message=f"Collection '{collection}' not found",
                 details={
                     "collection": collection,
                     "database": database,
                     "available_collections": collections,
                 },
-                suggestion=f"Check available collections: list_collections(database='{database}')",
+                suggestion="Check available collections: list_collections()",
             )
 
         try:
@@ -1091,13 +1091,13 @@ async def create_mcp_server() -> FastMCP:
             if collection is None or collection not in collections:
                 return error_response(
                     error_code="COLL_NOT_FOUND",
-                    message=f"Collection '{collection}' not found in database '{database}'",
+                    message=f"Collection '{collection}' not found",
                     details={
                         "collection": collection,
                         "database": database,
                         "available_collections": collections,
                     },
-                    suggestion=f"Check available collections: list_collections(database='{database}')",
+                    suggestion="Check available collections: list_collections()",
                 )
 
             # Safety check: if force=False, check if collection is empty
@@ -1420,7 +1420,20 @@ async def create_mcp_server() -> FastMCP:
 
     @app.tool()
     async def list_collections() -> str:
-        """List all collections in a vector database."""
+        """
+        List all collections in the vector database.
+
+        Returns a list of all collections with their embedding models.
+        Each collection is an independent vector database that stores documents.
+
+        Response includes:
+        - Collection names
+        - Embedding model for each collection
+        - Total count of collections
+
+        Use this to see what collections exist before performing operations like
+        write_documents, query, or delete_collection.
+        """
         # Internal: database defaults to first registered
         database: str | None = None
         if database is None:
@@ -1428,8 +1441,8 @@ async def create_mcp_server() -> FastMCP:
             if database is None:
                 return error_response(
                     error_code="NO_DATABASES",
-                    message="No databases registered",
-                    suggestion="Register a database first: register_database(database='name', database_type='milvus')",
+                    message="No collections registered",
+                    suggestion="Create a collection first: create_collection(collection='name')",
                 )
             logger.info(
                 f"Database parameter not provided, using first registered database: {database}"
@@ -1445,7 +1458,7 @@ async def create_mcp_server() -> FastMCP:
 
         if not collections:
             return success_response(
-                message=f"No collections found in database '{database}'",
+                message="No collections found",
                 data={
                     "collections": [],
                     "total_collections": 0,
@@ -1477,7 +1490,7 @@ async def create_mcp_server() -> FastMCP:
             collections_data.append(coll_data)
 
         return success_response(
-            message=f"Found {len(collections)} collection{'s' if len(collections) != 1 else ''} in database '{database}'",
+            message=f"Found {len(collections)} collection{'s' if len(collections) != 1 else ''}",
             data={
                 "collections": collections_data,
                 "total_collections": len(collections),
@@ -1545,7 +1558,6 @@ async def create_mcp_server() -> FastMCP:
         coll_name = info.get("name", collection or "default")
         data: dict[str, Any] = {
             "name": coll_name,
-            "database": database,
         }
 
         # Add document/chunk counts
@@ -1602,7 +1614,7 @@ async def create_mcp_server() -> FastMCP:
         collection: str = Field(..., description="Name of the collection to create"),
         database: str | None = Field(
             default=None,
-            description="Optional identifier (defaults to collection name if not provided). For backward compatibility only.",
+            description="**Internal use only** - Auto-resolved to collection name. Do not specify this parameter.",
         ),
         embedding: str = Field(
             default="auto",
@@ -1639,7 +1651,7 @@ async def create_mcp_server() -> FastMCP:
 
         Parameters:
         - collection: Name of the collection to create (required)
-        - database: Internal parameter (defaults to collection name, typically ignored)
+        - database: **Internal use only** - Auto-resolved, do not specify
         - embedding: Embedding model (default: "auto" - auto-detects from environment)
         - chunking_config: Optional chunking configuration (default: Sentence-based, 512 chars)
 
@@ -1704,13 +1716,13 @@ async def create_mcp_server() -> FastMCP:
             if collection in existing_collections:
                 return error_response(
                     error_code="COLL_ALREADY_EXISTS",
-                    message=f"Collection '{collection}' already exists in database '{database}'",
+                    message=f"Collection '{collection}' already exists",
                     details={
                         "collection": collection,
                         "database": database,
                         "existing_collections": existing_collections,
                     },
-                    suggestion=f"Use a different name or delete the existing collection: delete_collection(database='{database}', collection='{collection}', force=True)",
+                    suggestion=f"Use a different name or delete the existing collection: delete_collection(collection='{collection}', force=True)",
                 )
 
             # Create the collection using the create_collection method
@@ -1899,13 +1911,13 @@ async def create_mcp_server() -> FastMCP:
                     )
                     return error_response(
                         error_code="COLL_NOT_FOUND",
-                        message=f"Collection '{collection or 'default'}' not found in database '{database}'",
+                        message=f"Collection '{collection or 'default'}' not found",
                         details={
                             "collection": collection or "default",
                             "database": database,
                             "available_collections": available_colls,
                         },
-                        suggestion=f"Check available collections: list_collections(database='{database}')",
+                        suggestion="Check available collections: list_collections()",
                     )
                 return error_response(
                     error_code="QUERY_FAILED",
