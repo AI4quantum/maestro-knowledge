@@ -18,7 +18,7 @@ from src.maestro_mcp.server import create_mcp_server
 
 
 def demonstrate_mcp_server() -> None:
-    """Demonstrate the MCP server functionality with the new 3-step workflow."""
+    """Demonstrate the MCP server functionality with the Phase 9 workflow."""
     print("Maestro Vector Database MCP Server Example")
     print("=" * 50)
 
@@ -27,22 +27,27 @@ def demonstrate_mcp_server() -> None:
     server = create_mcp_server()
     print(f"✓ Server created: {server.name}")
 
-    # Show what tools are available
-    print("\n2. Available tools in the MCP server:")
+    # Show what tools are available (Phase 9.1 - 14 tools)
+    print("\n2. Available tools in the MCP server (Phase 9.1):")
     expected_tools = [
-        "register_database",  # Step 1: Register database instance
-        "setup_database",  # Step 2: Initialize connection
-        "create_collection",  # Step 3: Create collections
-        "get_supported_embeddings",
-        "write_documents",
-        "write_document",
-        "list_documents",
-        "count_documents",
-        "delete_documents",
-        "delete_document",
-        "delete_collection",
-        "cleanup",
+        # Database Management (5)
+        "create_database",
+        "delete_database",
         "get_database_info",
+        "list_databases",
+        "refresh_databases",
+        # Collection Management (4)
+        "create_collection",
+        "delete_collection",
+        "get_collection_info",
+        "list_collections",
+        # Document Operations (3)
+        "write_documents",
+        "delete_documents",
+        "get_document",
+        # Query Operations (2)
+        "query",
+        "search",
     ]
 
     for tool in expected_tools:
@@ -50,33 +55,39 @@ def demonstrate_mcp_server() -> None:
 
     print(f"\n✓ Total tools available: {len(expected_tools)}")
 
-    # Demonstrate the 3-step workflow
-    print("\n3. Typical workflow for setting up a vector database:")
-    print("   Step 1: register_database() - Register database instance")
-    print("   Step 2: setup_database() - Initialize connection")
-    print("   Step 3: create_collection() - Create collections")
-    print("   Then: Use write_documents(), query(), search(), etc.")
+    # Demonstrate the Phase 9.2 workflow (no default collection)
+    print("\n3. Typical workflow for setting up a vector database (Phase 9.2):")
+    print("   Step 1: create_database() - Create database (no default collection)")
+    print("   Step 2: create_collection() - Explicitly create collections")
+    print("   Step 3: write_documents() - Write documents to specific collection")
+    print("   Then: Use query(), search(), etc.")
 
     # Demonstrate direct vector database usage (what the MCP server does internally)
     print("\n3. Demonstrating vector database operations with embedding strategies:")
 
     try:
-        # Create a vector database
+        # Create a vector database (Phase 9.2: no default collection)
         print("\n   Creating Weaviate vector database...")
-        db = create_vector_database("weaviate", "ExampleDocs")
-        print(f"   ✓ Created {db.db_type} database with collection 'ExampleDocs'")
+        db = create_vector_database("weaviate")
+        print(f"   ✓ Created {db.db_type} database (no collections yet)")
 
         # Show supported embeddings
         print("\n   Getting supported embeddings...")
         embeddings = db.supported_embeddings()
         print(f"   ✓ Supported embeddings: {embeddings}")
 
-        # Set up the database with default embedding
+        # Set up the database with default embedding and create collection
         print("\n   Setting up database with default embedding...")
         db.setup(embedding="default")
         print("   ✓ Database setup complete with default embedding")
 
-        # Write some documents with default embedding
+        # Create collection explicitly (Phase 9.2)
+        print("\n   Creating collection 'ExampleDocs'...")
+        db.collection_name = "ExampleDocs"
+        db.create_collection()
+        print("   ✓ Collection 'ExampleDocs' created")
+
+        # Write some documents
         documents = [
             {
                 "url": "https://example.com/doc1",
@@ -103,8 +114,13 @@ def demonstrate_mcp_server() -> None:
         # Demonstrate Milvus with pre-computed vectors
         print("\n4. Demonstrating Milvus with pre-computed vectors:")
         try:
-            milvus_db = create_vector_database("milvus", "MilvusExampleDocs")
+            milvus_db = create_vector_database("milvus")
             print(f"   ✓ Created {milvus_db.db_type} database")
+
+            # Create collection explicitly
+            milvus_db.collection_name = "MilvusExampleDocs"
+            milvus_db.create_collection()
+            print("   ✓ Collection 'MilvusExampleDocs' created")
 
             # Show Milvus supported embeddings
             milvus_embeddings = milvus_db.supported_embeddings()
@@ -134,10 +150,15 @@ def demonstrate_mcp_server() -> None:
 
         if os.getenv("OPENAI_API_KEY"):
             try:
-                # Create a new collection with OpenAI embedding
-                openai_db = create_vector_database("weaviate", "OpenAIExampleDocs")
+                # Create a new database with OpenAI embedding
+                openai_db = create_vector_database("weaviate")
                 openai_db.setup(embedding="text-embedding-ada-002")
                 print("   ✓ Created database with OpenAI embedding")
+
+                # Create collection explicitly
+                openai_db.collection_name = "OpenAIExampleDocs"
+                openai_db.create_collection()
+                print("   ✓ Collection 'OpenAIExampleDocs' created")
 
                 # Write document with OpenAI embedding
                 openai_doc = {

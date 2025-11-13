@@ -147,7 +147,6 @@ async def test_weaviate_database_management(mcp_http_server: dict[str, Any]) -> 
             {
                 "database": database,
                 "database_type": "weaviate",  # Only difference from Milvus
-                "collection": database,
             },
         )
         assert hasattr(res, "data")
@@ -209,7 +208,6 @@ async def test_weaviate_configuration_discovery(
                 {
                     "database": database,
                     "database_type": "weaviate",  # Only difference from Milvus
-                    "collection": database,
                 },
             )
             assert hasattr(res, "data")

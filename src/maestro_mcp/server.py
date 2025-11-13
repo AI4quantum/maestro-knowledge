@@ -465,9 +465,6 @@ async def create_mcp_server() -> FastMCP:
             description="Type of vector database to create",
             json_schema_extra={"enum": ["weaviate", "milvus"]},
         ),
-        collection: str = Field(
-            default="MaestroDocs", description="Name of the default collection to use"
-        ),
         embedding: str = Field(
             default="auto",
             description=(
@@ -479,10 +476,10 @@ async def create_mcp_server() -> FastMCP:
         ),
     ) -> str:
         """
-        Create and initialize a vector database instance in one step.
+        Create and initialize a vector database instance.
 
-        This combines registration and connection initialization for simplicity.
-        The database is ready to use after this call - just create collections and write documents.
+        This creates the database connection but does NOT create any collections.
+        You must explicitly create collections using create_collection() before writing documents.
 
         The embedding parameter defaults to 'auto' which automatically detects the best embedding
         model from your environment configuration. You typically don't need to specify it.
@@ -491,17 +488,15 @@ async def create_mcp_server() -> FastMCP:
 
         Next steps:
         - Create collection: create_collection(database="name", collection="name")
-        - Write documents: write_document(database="name", collection="name", ...)
+        - Write documents: write_documents(database="name", documents=[...])
 
         Common errors:
-        - Database already exists: Use cleanup() to remove existing database first
+        - Database already exists: Use delete_database() to remove existing database first
         - Invalid database_type: Must be 'milvus' or 'weaviate'
         - Missing API key: Set OPENAI_API_KEY or configure custom embeddings
         """
         try:
-            logger.info(
-                f"Registering vector database: {database} of type {database_type}"
-            )
+            logger.info(f"Creating vector database: {database} of type {database_type}")
             logger.info(
                 f"Current vector_databases keys: {list(vector_databases.keys())}"
             )
@@ -515,13 +510,15 @@ async def create_mcp_server() -> FastMCP:
                 logger.error(f"Database '{database}' already exists")
                 return ErrorMessages.database_already_exists(database)
 
-            # Create new database instance
-            vector_databases[database] = create_vector_database(
-                database_type, collection
-            )
+            # Create new database instance (no default collection)
+            vector_databases[database] = create_vector_database(database_type)
 
             logger.info(
                 f"Registered database. Updated vector_databases keys: {list(vector_databases.keys())}"
+            )
+
+            logger.info(
+                f"Created database. Updated vector_databases keys: {list(vector_databases.keys())}"
             )
 
             # Auto-initialize the connection (merged setup step)
@@ -565,9 +562,9 @@ async def create_mcp_server() -> FastMCP:
                         )
                     return str(res)
 
-            return f"Successfully created and initialized {database_type} vector database '{database}' with '{resolved_embedding}' embedding. Ready to create collections and write documents."
+            return f"Successfully created and initialized {database_type} vector database '{database}' with '{resolved_embedding}' embedding. Database created. No collections yet. Use create_collection() to add collections."
         except Exception as e:
-            error_msg = f"Failed to register vector database '{database}': {str(e)}"
+            error_msg = f"Failed to create vector database '{database}': {str(e)}"
             logger.error(error_msg)
             return f"Error: {error_msg}"
 

@@ -30,7 +30,6 @@ async def run_database_management_tests(client: Client, backend_name: str) -> No
         {
             "database": db_name,
             "database_type": config["db_type"],
-            "collection": f"{db_name}_Collection",
         },
     )
     assert hasattr(res, "data"), f"create_vector_database_tool failed: {res}"
@@ -81,7 +80,6 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
         {
             "database": db_name,
             "database_type": config["db_type"],
-            "collection": f"{db_name}_Collection",
         },
     )
     assert hasattr(res, "data")
@@ -189,7 +187,6 @@ async def run_query_operations_tests(client: Client, backend_name: str) -> None:
         {
             "database": db_name,
             "database_type": config["db_type"],
-            "collection": f"{db_name}_Collection",
         },
     )
     assert hasattr(res, "data")
@@ -265,7 +262,6 @@ async def run_configuration_discovery_tests(client: Client, backend_name: str) -
         {
             "database": db_name,
             "database_type": config["db_type"],
-            "collection": db_name,
         },
     )
     assert hasattr(res, "data")
@@ -310,7 +306,6 @@ async def run_document_retrieval_tests(client: Client, backend_name: str) -> Non
         {
             "database": db_name,
             "database_type": config["db_type"],
-            "collection": f"{db_name}_Collection",
         },
     )
     assert hasattr(res, "data")
@@ -372,7 +367,6 @@ async def run_bulk_operations_tests(client: Client, backend_name: str) -> None:
         {
             "database": db_name,
             "database_type": config["db_type"],
-            "collection": f"{db_name}_Collection",
         },
     )
     assert hasattr(res, "data")
@@ -443,7 +437,6 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
             {
                 "database": db_name,
                 "database_type": config["db_type"],
-                "collection": collection_name,
             },
         )
         if not hasattr(res, "data"):
@@ -656,7 +649,6 @@ async def run_full_flow_test(client: Client, backend_name: str) -> None:
             {
                 "database": db_name,
                 "database_type": config["db_type"],
-                "collection": db_name,
             },
         )
         if not hasattr(res, "data"):

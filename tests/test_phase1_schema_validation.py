@@ -67,7 +67,7 @@ async def test_flat_parameters_in_sample_tools() -> None:
 
     # Test a sample of critical tools
     tools_to_test = [
-        ("create_database", ["database", "database_type", "collection"]),
+        ("create_database", ["database", "database_type", "embedding"]),
         ("query", ["database", "query", "limit", "collection"]),
         ("search", ["database", "query", "limit", "collection"]),
         ("write_documents", ["database", "documents", "embedding"]),

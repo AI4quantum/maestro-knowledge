@@ -30,7 +30,6 @@ async def run_database_management_tests(client: "Client", backend_name: str) -> 
         {
             "database": database,
             "database_type": config["db_type"],
-            "collection": f"{database}_Collection",
         },
     )
     assert hasattr(res, "data"), f"create_vector_database_tool failed: {res}"
