@@ -226,8 +226,10 @@ async def test_weaviate_configuration_discovery(
             )
             print("✓ Got supported embeddings")
 
-            # Test get_supported_chunking_strategies
-            res = await client.call_tool("get_supported_chunking_strategies")
+            # Test get_database_info with include_chunking
+            res = await client.call_tool(
+                "get_database_info", {"database": database, "include_chunking": True}
+            )
             assert hasattr(res, "data")
             # Should contain chunking strategies like 'Fixed', 'Sentence', etc.
             strategies_mentioned = any(

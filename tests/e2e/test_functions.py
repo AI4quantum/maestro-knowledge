@@ -255,7 +255,7 @@ async def run_query_operations_tests(client: Client, backend_name: str) -> None:
 
 
 async def run_configuration_discovery_tests(client: Client, backend_name: str) -> None:
-    """Test configuration discovery operations: get_database_info with embeddings, get_supported_chunking_strategies."""
+    """Test configuration discovery operations: get_database_info with embeddings and chunking."""
     config = get_backend_config(backend_name)
     db_name = get_db_name_for_test(backend_name, "Config_Test")
 
@@ -281,8 +281,10 @@ async def run_configuration_discovery_tests(client: Client, backend_name: str) -
     elif backend_name == "weaviate":
         assert "default" in res.data or "text2vec" in res.data.lower()
 
-    # Test get_supported_chunking_strategies
-    res = await client.call_tool("get_supported_chunking_strategies")
+    # Test get_database_info with include_chunking
+    res = await client.call_tool(
+        "get_database_info", {"database": db_name, "include_chunking": True}
+    )
     assert hasattr(res, "data")
     # Should contain chunking strategies
     strategies_mentioned = any(

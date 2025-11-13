@@ -572,62 +572,6 @@ async def create_mcp_server() -> FastMCP:
             return f"Error: {error_msg}"
 
     @app.tool()
-    async def get_supported_chunking_strategies() -> str:
-        """Return the supported chunking strategies and their parameters."""
-        # Keep this in sync with the src/chunking/ package defaults
-        strategies = [
-            {
-                "name": "None",
-                "parameters": {},
-                "description": "No chunking; the entire document is a single chunk.",
-                "defaults": {},
-            },
-            {
-                "name": "Fixed",
-                "parameters": {
-                    "chunk_size": "int > 0",
-                    "overlap": "int >= 0",
-                },
-                "description": "Fixed-size windows with optional overlap.",
-                "defaults": {"chunk_size": 512, "overlap": 0},
-            },
-            {
-                "name": "Sentence",
-                "parameters": {
-                    "chunk_size": "int > 0",
-                    "overlap": "int >= 0",
-                },
-                "description": "Sentence-aware packing up to chunk_size with optional overlap; long sentences are split.",
-                "defaults": {"chunk_size": 512, "overlap": 0},
-            },
-            {
-                "name": "Semantic",
-                "parameters": {
-                    "chunk_size": "int > 0",
-                    "overlap": "int >= 0",
-                    "window_size": "int >= 0",
-                    "threshold_percentile": "float 0-100",
-                    "model_name": "string",
-                },
-                "description": "Semantic chunking using sentence embeddings and similarity to create coherent chunks.",
-                "defaults": {
-                    "chunk_size": 768,
-                    "overlap": 0,
-                    "window_size": 1,
-                    "threshold_percentile": 95.0,
-                    "model_name": "all-MiniLM-L6-v2",
-                },
-            },
-        ]
-        defaults_behavior = {
-            "chunk_text_default_strategy": ChunkingConfig().strategy,
-            "default_params_when_strategy_set": {"chunk_size": 512, "overlap": 0},
-        }
-        return json.dumps(
-            {"strategies": strategies, "notes": defaults_behavior}, indent=2
-        )
-
-    @app.tool()
     async def write_documents(
         database: str = Field(..., description="Name of the vector database instance"),
         documents: list[dict[str, Any]] = Field(
@@ -942,12 +886,17 @@ async def create_mcp_server() -> FastMCP:
             default=False,
             description="Include list of supported embedding models in the response",
         ),
+        include_chunking: bool = Field(
+            default=False,
+            description="Include list of supported chunking strategies in the response",
+        ),
     ) -> str:
         """
         Get information about a vector database.
 
         Returns database type, collection name, and document count.
         Optionally includes supported embedding models when include_embeddings=True.
+        Optionally includes supported chunking strategies when include_chunking=True.
         """
         db = get_database_by_name(database)
         ok, cnt_any = await run_with_timeout(
@@ -964,6 +913,61 @@ async def create_mcp_server() -> FastMCP:
         if include_embeddings:
             embeddings = db.supported_embeddings()
             info["supported_embeddings"] = embeddings
+
+        if include_chunking:
+            # Keep this in sync with the src/chunking/ package defaults
+            strategies = [
+                {
+                    "name": "None",
+                    "parameters": {},
+                    "description": "No chunking; the entire document is a single chunk.",
+                    "defaults": {},
+                },
+                {
+                    "name": "Fixed",
+                    "parameters": {
+                        "chunk_size": "int > 0",
+                        "overlap": "int >= 0",
+                    },
+                    "description": "Fixed-size windows with optional overlap.",
+                    "defaults": {"chunk_size": 512, "overlap": 0},
+                },
+                {
+                    "name": "Sentence",
+                    "parameters": {
+                        "chunk_size": "int > 0",
+                        "overlap": "int >= 0",
+                    },
+                    "description": "Sentence-aware packing up to chunk_size with optional overlap; long sentences are split.",
+                    "defaults": {"chunk_size": 512, "overlap": 0},
+                },
+                {
+                    "name": "Semantic",
+                    "parameters": {
+                        "chunk_size": "int > 0",
+                        "overlap": "int >= 0",
+                        "window_size": "int >= 0",
+                        "threshold_percentile": "float 0-100",
+                        "model_name": "string",
+                    },
+                    "description": "Semantic chunking using sentence embeddings and similarity to create coherent chunks.",
+                    "defaults": {
+                        "chunk_size": 768,
+                        "overlap": 0,
+                        "window_size": 1,
+                        "threshold_percentile": 95.0,
+                        "model_name": "all-MiniLM-L6-v2",
+                    },
+                },
+            ]
+            defaults_behavior = {
+                "chunk_text_default_strategy": ChunkingConfig().strategy,
+                "default_params_when_strategy_set": {"chunk_size": 512, "overlap": 0},
+            }
+            info["supported_chunking"] = {
+                "strategies": strategies,
+                "notes": defaults_behavior,
+            }
 
         return f"Database information for '{database}':\n{json.dumps(info, indent=2)}"
 

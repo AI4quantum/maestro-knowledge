@@ -98,8 +98,10 @@ async def run_configuration_discovery_tests(
     # Should contain embedding options (backend-agnostic check)
     assert res.data and len(str(res.data)) > 0, f"No embeddings returned: {res.data}"
 
-    # Test get_supported_chunking_strategies
-    res = await client.call_tool("get_supported_chunking_strategies")
+    # Test get_database_info with include_chunking
+    res = await client.call_tool(
+        "get_database_info", {"database": database, "include_chunking": True}
+    )
     assert hasattr(res, "data")
     # Should contain chunking strategies
     strategies_mentioned = any(

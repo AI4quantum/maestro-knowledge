@@ -121,7 +121,6 @@ async def test_all_tools_accessible() -> None:
 
     expected_tools = [
         "create_database",
-        "get_supported_chunking_strategies",
         "write_documents",
         "delete_documents",
         "get_document",
