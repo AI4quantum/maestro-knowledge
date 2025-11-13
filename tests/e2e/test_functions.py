@@ -123,22 +123,6 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
             res_data = res
         assert res_data, f"write_documents failed: {res}"
 
-    # Test list_documents
-    res = await client.call_tool(
-        "list_documents", {"database": db_name, "limit": 10, "offset": 0}
-    )
-    docs_list = None
-    if hasattr(res, "data"):
-        docs_list = res.data if isinstance(res.data, list) else []
-    elif isinstance(res, str):
-        import json
-
-        try:
-            docs_list = json.loads(res)
-        except Exception:
-            docs_list = []
-    assert docs_list is not None, f"list_documents failed: {res}"
-
     # Test get_collection_info with count
     res = await client.call_tool(
         "get_collection_info", {"database": db_name, "include_count": True}
@@ -146,12 +130,41 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
     if not hasattr(res, "data") and isinstance(res, str):
         assert res, f"get_collection_info with count failed: {res}"
 
-    # Test delete_documents (get a document ID first from list_documents)
+    # Test delete_documents (use search to get a document ID first)
+    res = await client.call_tool(
+        "search", {"database": db_name, "query": "test", "limit": 1}
+    )
     first_doc_id = None
-    if docs_list and isinstance(docs_list, list):
-        first_doc = docs_list[0]
-        if isinstance(first_doc, dict):
-            first_doc_id = first_doc.get("id") or first_doc.get("doc_id")
+    if hasattr(res, "data"):
+        search_results = res.data if isinstance(res.data, list) else []
+        if (
+            search_results
+            and isinstance(search_results, list)
+            and len(search_results) > 0
+        ):
+            first_doc = search_results[0]
+            if isinstance(first_doc, dict):
+                first_doc_id = (
+                    first_doc.get("id")
+                    or first_doc.get("doc_id")
+                    or first_doc.get("document_id")
+                )
+    elif isinstance(res, str):
+        import json
+
+        try:
+            search_results = json.loads(res)
+            if isinstance(search_results, list) and len(search_results) > 0:
+                first_doc = search_results[0]
+                if isinstance(first_doc, dict):
+                    first_doc_id = (
+                        first_doc.get("id")
+                        or first_doc.get("doc_id")
+                        or first_doc.get("document_id")
+                    )
+        except Exception:
+            pass
+
     if first_doc_id:
         res = await client.call_tool(
             "delete_documents", {"database": db_name, "document_ids": [first_doc_id]}
@@ -328,7 +341,7 @@ async def run_document_retrieval_tests(client: Client, backend_name: str) -> Non
 
     # Get document list to find a document ID
     res = await client.call_tool(
-        "list_documents", {"database": db_name, "limit": 1, "offset": 0}
+        "search", {"database": db_name, "query": "*", "limit": 1}
     )
     assert hasattr(res, "data")
 
@@ -390,7 +403,7 @@ async def run_bulk_operations_tests(client: Client, backend_name: str) -> None:
 
     # Get document IDs for bulk deletion
     res = await client.call_tool(
-        "list_documents", {"database": db_name, "limit": 10, "offset": 0}
+        "search", {"database": db_name, "query": "*", "limit": 10}
     )
     assert hasattr(res, "data")
 
@@ -490,29 +503,27 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
         if not hasattr(res, "data"):
             pytest.fail(f"write_documents failed for {backend_name}: {res}")
 
-        # Test list_documents_in_collection
+        # Test search in collection
         res = await client.call_tool(
-            "list_documents_in_collection",
+            "search",
             {
                 "database": db_name,
                 "collection": collection_name,
+                "query": "*",
                 "limit": 10,
-                "offset": 0,
             },
         )
         if not hasattr(res, "data"):
-            pytest.fail(
-                f"list_documents_in_collection failed for {backend_name}: {res}"
-            )
+            pytest.fail(f"search failed for {backend_name}: {res}")
 
-        # Test delete_documents - need to find document ID first from list_documents_in_collection
+        # Test delete_documents - need to find document ID first from search
         res = await client.call_tool(
-            "list_documents_in_collection",
+            "search",
             {
                 "database": db_name,
                 "collection": collection_name,
+                "query": "*",
                 "limit": 10,
-                "offset": 0,
             },
         )
         doc_id = None
@@ -700,7 +711,7 @@ async def run_full_flow_test(client: Client, backend_name: str) -> None:
 
         # List documents
         res = await client.call_tool(
-            "list_documents", {"database": db_name, "limit": 10, "offset": 0}
+            "search", {"database": db_name, "query": "*", "limit": 10}
         )
         if not hasattr(res, "data"):
             pytest.fail(f"list_documents failed for {backend_name}: {res}")

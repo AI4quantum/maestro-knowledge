@@ -230,12 +230,6 @@ class TestIntegrationExamples:
                 assert "write_documents" in content, (
                     f"{example_file} should demonstrate document writing"
                 )
-                assert "list_documents" in content, (
-                    f"{example_file} should demonstrate document listing"
-                )
-                assert "count_documents" in content, (
-                    f"{example_file} should demonstrate document counting"
-                )
                 assert "delete_documents" in content, (
                     f"{example_file} should demonstrate document deletion"
                 )
