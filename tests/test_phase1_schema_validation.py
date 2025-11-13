@@ -126,8 +126,6 @@ async def test_all_tools_accessible() -> None:
         "list_documents",
         "list_documents_in_collection",
         "delete_documents",
-        "delete_document",
-        "delete_document_from_collection",
         "get_document",
         "delete_collection",
         "delete_database",

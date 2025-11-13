@@ -59,7 +59,6 @@ async def test_tool_definitions() -> None:
                 "write_documents",
                 "list_documents",
                 "delete_documents",
-                "delete_document",
                 "delete_collection",
                 "delete_database",
                 "get_database_info",

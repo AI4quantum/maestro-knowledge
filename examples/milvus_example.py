@@ -167,7 +167,7 @@ def main() -> None:
         if retrieved_docs:
             first_doc_id = retrieved_docs[0].get("id")
             print(f"   - Deleting document with ID: {first_doc_id}")
-            db.delete_document(str(first_doc_id))
+            db.delete_documents([str(first_doc_id)])
 
             # Check count after deletion
             new_count = db.count_documents()

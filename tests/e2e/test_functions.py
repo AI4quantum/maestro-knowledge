@@ -146,7 +146,7 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
     if not hasattr(res, "data") and isinstance(res, str):
         assert res, f"get_collection_info with count failed: {res}"
 
-    # Test delete_document (get a document ID first from list_documents)
+    # Test delete_documents (get a document ID first from list_documents)
     first_doc_id = None
     if docs_list and isinstance(docs_list, list):
         first_doc = docs_list[0]
@@ -154,10 +154,10 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
             first_doc_id = first_doc.get("id") or first_doc.get("doc_id")
     if first_doc_id:
         res = await client.call_tool(
-            "delete_document", {"database": db_name, "document_id": first_doc_id}
+            "delete_documents", {"database": db_name, "document_ids": [first_doc_id]}
         )
         if not hasattr(res, "data") and isinstance(res, str):
-            assert res, f"delete_document failed: {res}"
+            assert res, f"delete_documents failed: {res}"
 
     # Cleanup
     res = await client.call_tool("delete_database", {"database": db_name})
@@ -505,19 +505,36 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
                 f"list_documents_in_collection failed for {backend_name}: {res}"
             )
 
-        # Test delete_document_from_collection
+        # Test delete_documents - need to find document ID first from list_documents_in_collection
         res = await client.call_tool(
-            "delete_document_from_collection",
+            "list_documents_in_collection",
             {
                 "database": db_name,
                 "collection": collection_name,
-                "document_name": doc_name,
+                "limit": 10,
+                "offset": 0,
             },
         )
-        if not hasattr(res, "data"):
-            pytest.fail(
-                f"delete_document_from_collection failed for {backend_name}: {res}"
+        doc_id = None
+        if hasattr(res, "data") and isinstance(res.data, list):
+            for doc in res.data:
+                if (
+                    isinstance(doc, dict)
+                    and doc.get("metadata", {}).get("doc_name") == doc_name
+                ):
+                    doc_id = doc.get("id")
+                    break
+
+        if doc_id:
+            res = await client.call_tool(
+                "delete_documents",
+                {
+                    "database": db_name,
+                    "document_ids": [doc_id],
+                },
             )
+            if not hasattr(res, "data"):
+                pytest.fail(f"delete_documents failed for {backend_name}: {res}")
 
         # Test delete_collection - MEDIUM PRIORITY addition
         res = await client.call_tool(

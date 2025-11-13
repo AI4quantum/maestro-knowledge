@@ -236,7 +236,7 @@ class TestIntegrationExamples:
                 assert "count_documents" in content, (
                     f"{example_file} should demonstrate document counting"
                 )
-                assert "delete_document" in content, (
+                assert "delete_documents" in content, (
                     f"{example_file} should demonstrate document deletion"
                 )
 
