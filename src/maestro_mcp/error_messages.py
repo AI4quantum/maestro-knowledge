@@ -16,18 +16,16 @@ class ErrorMessages:
 
     @staticmethod
     def database_not_found(db_name: str, available: list[str]) -> str:
-        """Error when database doesn't exist."""
+        """Error when collection doesn't exist (database is internal concept)."""
         available_str = (
             ", ".join(f"'{db}'" for db in available) if available else "none"
         )
-        return f"""Database '{db_name}' not found.
+        return f"""Collection '{db_name}' not found.
 
-Available databases: {available_str}
+Available collections: {available_str}
 
-To create a new database:
-1. Register: create_database(database="{db_name}", database_type="milvus", collection="default")
-2. Initialize: setup_database(database="{db_name}", embedding="default")
-3. Create collection: create_collection(database="{db_name}", collection="default")"""
+To create a new collection:
+create_collection(collection="{db_name}", embedding="auto")"""
 
     @staticmethod
     def collection_not_found(
@@ -35,46 +33,47 @@ To create a new database:
     ) -> str:
         """Error when collection doesn't exist."""
         available_str = ", ".join(f"'{c}'" for c in available) if available else "none"
-        return f"""Collection '{collection}' not found in database '{database}'.
+        return f"""Collection '{collection}' not found.
 
 Available collections: {available_str}
 
 To create this collection:
-create_collection(database="{database}", collection="{collection}", embedding="default")"""
+create_collection(collection="{collection}", embedding="auto")"""
 
     @staticmethod
     def collection_already_exists(collection: str, database: str) -> str:
         """Error when trying to create a collection that already exists."""
-        return f"""Collection '{collection}' already exists in database '{database}'.
+        return f"""Collection '{collection}' already exists.
 
 To use this collection, write documents directly:
-write_documents(database="{database}", documents=[...])
+write_documents(collection="{collection}", documents=[...])
 
 To delete and recreate:
-delete_collection(database="{database}", collection="{collection}")"""
+delete_collection(collection="{collection}", force=True)"""
 
     @staticmethod
     def database_already_exists(database: str) -> str:
-        """Error when trying to register a database that already exists."""
-        return f"""Database '{database}' is already registered.
+        """Error when trying to register a collection that already exists."""
+        return f"""Collection '{database}' is already registered.
 
-To use this database:
-- Write documents: write_documents(database="{database}", documents=[...])
-- Query: search(database="{database}", query="...")
+To use this collection:
+- Write documents: write_documents(collection="{database}", documents=[...])
+- Query: search(collection="{database}", query="...")
 
 To remove and recreate:
-cleanup(database="{database}")"""
+delete_collection(collection="{database}", force=True)"""
 
     @staticmethod
     def database_not_initialized(database: str) -> str:
-        """Error when database is registered but not initialized."""
-        return f"""Database '{database}' is registered but not initialized.
+        """Error when collection is registered but not initialized."""
+        return f"""Collection '{database}' is registered but not properly initialized.
 
-Initialize the connection:
-setup_database(database="{database}", embedding="default")
+Try refreshing the collections registry:
+refresh_databases()
 
-Then create a collection:
-create_collection(database="{database}", collection="default")"""
+Or recreate the collection:
+delete_collection(collection="{database}", force=True)
+create_collection(collection="{database}", embedding="auto")"""
 
     @staticmethod
     def invalid_embedding(embed_model: str, supported: list[str]) -> str:
@@ -85,13 +84,14 @@ create_collection(database="{database}", collection="default")"""
 Supported models: {supported_str}
 
 Common options:
-- 'default' (OpenAI text-embedding-ada-002)
+- 'auto' (auto-detects from environment, recommended)
+- 'text-embedding-ada-002' (OpenAI default)
 - 'text-embedding-3-small' (OpenAI, faster)
 - 'text-embedding-3-large' (OpenAI, more accurate)
 - 'custom_local' (requires CUSTOM_EMBEDDING_URL env var)
 
 To see all supported embeddings:
-get_supported_embeddings(database="your_database")"""
+get_config(include_embeddings=True)"""
 
     @staticmethod
     def invalid_database_type(db_type: str) -> str:
@@ -100,19 +100,15 @@ get_supported_embeddings(database="your_database")"""
 
 Supported types: 'milvus', 'weaviate'
 
-Example:
-create_database(database="mydb", database_type="milvus", collection="default")"""
+Note: Database type is auto-detected from environment. Ensure MILVUS_URI or WEAVIATE_URL is set."""
 
     @staticmethod
     def document_not_found(document_name: str, collection: str, database: str) -> str:
         """Error when document doesn't exist."""
-        return f"""Document '{document_name}' not found in collection '{collection}' of database '{database}'.
-
-To list available documents:
-list_documents_in_collection(database="{database}", collection="{collection}")
+        return f"""Document '{document_name}' not found in collection '{collection}'.
 
 To write a new document:
-write_document_to_collection(database="{database}", collection="{collection}", document_name="{document_name}", text="...", url="...")"""
+write_documents(collection="{collection}", documents=[{{"text": "...", "url": "{document_name}"}}])"""
 
     @staticmethod
     def invalid_limit(limit: int, min_val: int = 1, max_val: int = 100) -> str:
@@ -122,7 +118,7 @@ write_document_to_collection(database="{database}", collection="{collection}", d
 Limit must be between {min_val} and {max_val}.
 
 Example:
-search(database="mydb", query="...", limit=10)"""
+search(collection="docs", query="...", limit=10)"""
 
     @staticmethod
     def invalid_min_score(min_score: float) -> str:
@@ -136,17 +132,17 @@ min_score must be between 0.0 and 1.0 (inclusive).
 - 1.0 = exact matches only
 
 Example:
-search(database="mydb", query="...", min_score=0.7)"""
+search(collection="docs", query="...", min_score=0.7)"""
 
     @staticmethod
     def empty_documents_list() -> str:
         """Error when documents list is empty."""
         return """Documents list cannot be empty.
 
-Provide at least one document with 'url' field:
-write_documents(database="mydb", documents=[
-    {"url": "https://example.com/doc1", "metadata": {"type": "article"}},
-    {"url": "doc2", "text": "Direct text content"}
+Provide at least one document with 'text' field:
+write_documents(collection="docs", documents=[
+    {"text": "Document content here", "url": "https://example.com/doc1"},
+    {"text": "Another document", "metadata": {"type": "article"}}
 ])"""
 
     @staticmethod
@@ -156,8 +152,8 @@ write_documents(database="mydb", documents=[
         return f"""Required field '{field}' is missing{context_str}.
 
 Each document must include:
-- 'url' (required): Document identifier or URL
-- 'text' (optional): Direct text content
+- 'text' (required): Document content
+- 'url' (optional): Document identifier or URL (auto-generated if empty)
 - 'metadata' (optional): Additional metadata dict"""
 
     @staticmethod
@@ -179,13 +175,13 @@ Troubleshooting:
     @staticmethod
     def generic_operation_failed(operation: str, database: str, details: str) -> str:
         """Generic error for failed operations."""
-        return f"""Failed to {operation} in database '{database}'.
+        return f"""Failed to {operation} in collection '{database}'.
 
 Error details: {details}
 
 Troubleshooting:
-1. Verify database is initialized: get_database_info(database="{database}")
-2. Check database status: list_databases()
+1. Verify collection exists: list_collections()
+2. Check collection info: get_collection(collection="{database}")
 3. Review error details above for specific issues"""
 
     @staticmethod

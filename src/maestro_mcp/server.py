@@ -397,12 +397,77 @@ async def resync_weaviate_databases() -> list[str]:
     return added
 
 
-def get_database_by_name(db_name: str) -> VectorDatabase:
-    """Get a vector database instance by name."""
+def get_database_by_name(db_name: str, auto_bootstrap: bool = True) -> VectorDatabase:
+    """Get a vector database instance by name, optionally bootstrapping if not found.
+
+    Args:
+        db_name: Name of the database to retrieve
+        auto_bootstrap: If True, automatically create database entry if it doesn't exist (Phase 8.5)
+
+    Returns:
+        VectorDatabase instance
+
+    Raises:
+        ValueError: If database not found and auto_bootstrap=False
+    """
     if db_name not in vector_databases:
-        raise ValueError(
-            f"Collection '{db_name}' not found. Please register it first with register_database()."
-        )
+        if not auto_bootstrap:
+            raise ValueError(
+                f"Collection '{db_name}' not found. Please register it first with register_database()."
+            )
+
+        # Bootstrap new database connection (Phase 8.5)
+        logger.info(f"Auto-bootstrapping database connection for '{db_name}'")
+
+        # Determine database type from environment
+        db_type = None
+        if os.getenv("MILVUS_URI"):
+            db_type = "milvus"
+        elif os.getenv("WEAVIATE_URL"):
+            db_type = "weaviate"
+        else:
+            # Default to Milvus
+            db_type = "milvus"
+            logger.info(
+                "No vector DB environment variables found, defaulting to Milvus"
+            )
+
+        # Create database instance
+        try:
+            from src.db.vector_db_factory import create_vector_database
+
+            db = create_vector_database(db_type)
+
+            # Try to infer embedding config from environment (same logic as resync)
+            try:
+                env_url = os.getenv("CUSTOM_EMBEDDING_URL")
+                env_model = os.getenv("CUSTOM_EMBEDDING_MODEL")
+                env_vs = os.getenv("CUSTOM_EMBEDDING_VECTORSIZE")
+
+                if env_url and env_model and env_vs:
+                    # Custom embedding is configured - use it
+                    db.embedding_model = "custom_local"
+                    try:
+                        db.dimension = int(env_vs)
+                        logger.info(
+                            f"Auto-detected custom_local embedding (dim={env_vs}) for '{db_name}'"
+                        )
+                    except ValueError:
+                        logger.warning(f"Invalid CUSTOM_EMBEDDING_VECTORSIZE: {env_vs}")
+                else:
+                    # No custom embedding - use default OpenAI
+                    db.embedding_model = "text-embedding-ada-002"
+                    logger.info(f"Using default OpenAI embedding for '{db_name}'")
+            except Exception as e:
+                logger.warning(f"Failed to infer embedding config for '{db_name}': {e}")
+                db.embedding_model = "text-embedding-ada-002"
+
+            vector_databases[db_name] = db
+            logger.info(f"Bootstrapped new {db_type} database connection: {db_name}")
+            return db
+        except Exception as e:
+            raise ValueError(f"Failed to bootstrap database '{db_name}': {str(e)}")
+
     return vector_databases[db_name]
 
 
@@ -575,9 +640,9 @@ async def create_mcp_server() -> FastMCP:
                     resolved_embedding = "custom_local"
                     logger.info("Auto-detected custom_local embedding from environment")
                 else:
-                    resolved_embedding = "default"
+                    resolved_embedding = "text-embedding-ada-002"
                     logger.info(
-                        "No custom embedding configured, using default (OpenAI)"
+                        "No custom embedding configured, using default OpenAI (text-embedding-ada-002)"
                     )
 
             # Call setup to initialize the database connection
@@ -638,8 +703,8 @@ async def create_mcp_server() -> FastMCP:
             ...,
             description=(
                 "List of documents to write. Each document is a dict with:\n"
-                "- 'url' (required): Document identifier or URL to fetch from\n"
-                "- 'text' (optional): Direct text content (backwards compatible)\n"
+                "- 'text' (required): Document content\n"
+                "- 'url' (optional): Source URL or identifier (auto-generated from text hash if empty)\n"
                 "- 'metadata' (optional): Additional metadata dict\n\n"
                 "URL Fetching: If 'url' starts with http:// or https://, the system will:\n"
                 "1. Fetch the content from the URL\n"
@@ -650,34 +715,30 @@ async def create_mcp_server() -> FastMCP:
                 "Markdown (.md), Plain text (.txt)\n\n"
                 "Security: Only HTTP/HTTPS URLs allowed. File paths (file://) restricted to "
                 "current working directory and subdirectories.\n\n"
-                "Backwards Compatible: Providing 'text' directly still works. If both 'url' and 'text' "
-                "are provided, 'text' takes precedence (no fetching occurs)."
+                "If 'url' is empty or not provided, it will be auto-generated from the text content hash."
             ),
         ),
     ) -> str:
         """
         Write documents to a vector database with automatic URL fetching and format conversion.
 
-        This tool supports both direct text provision (backwards compatible) and automatic
-        fetching from URLs with format detection and conversion.
+        IMPORTANT: You must specify the collection parameter. Collections are NOT created
+        automatically - use create_collection() first.
 
-        IMPORTANT: You must specify the collection parameter to write to a specific collection.
-        Collections are NOT created automatically - use create_collection() first.
+        Document Format:
+        Each document in the 'documents' list should be a dict with:
+        - 'text' (required): Document content
+        - 'url' (optional): Source URL or identifier (auto-generated from text hash if empty)
+        - 'metadata' (optional): Additional metadata dict
 
         Key Features:
         - URL Fetching: Automatically fetches content from http:// or https:// URLs
         - Format Detection: Auto-detects HTML, PDF, Markdown, and plain text
         - Format Conversion: Converts HTML (via html2text) and PDF (via PyPDF2) to plain text
         - Security: Only HTTP/HTTPS allowed; file:// paths restricted to CWD and subdirectories
-        - Backwards Compatible: Direct 'text' field still works; takes precedence over URL fetching
+        - Auto-generated URLs: If 'url' is empty, generates unique ID from text content hash
         - Metadata Enrichment: Fetched documents get enriched with content_type, fetched_at, etc.
         - Embedding Model: Configured at collection creation time, automatically included in chunk metadata
-
-        Document Format:
-        Each document in the 'documents' list should be a dict with:
-        - 'url' (required): Document identifier or URL to fetch from
-        - 'text' (optional): Direct text content (if provided, no fetching occurs)
-        - 'metadata' (optional): Additional metadata dict
 
         Supported URL Formats:
         - HTML pages: Converted to markdown-style text
@@ -698,13 +759,14 @@ async def create_mcp_server() -> FastMCP:
 
         Returns:
         JSON string with:
-        - status: "ok" or "error"
+        - status: "success" or "error"
         - message: Summary of operation
-        - write_stats: Statistics about chunks written
-        - collection_info: Updated collection information
-        - sample_query_suggestion: Suggested query to test the collection
+        - data: Statistics about documents and chunks written
+        - metadata: Collection info and sample query suggestion
 
-        Note: Embedding model is configured at collection creation time via setup_database or create_collection.
+        Common Errors:
+        - COLL_NOT_FOUND: Collection doesn't exist - create it first with create_collection()
+        - DOC_WRITE_FAILED: Write operation failed - check error details
         """
         # Internal: database defaults to collection name
         database: str | None = None
@@ -846,6 +908,9 @@ async def create_mcp_server() -> FastMCP:
 
         Safety: By default (force=False), this operation requires explicit confirmation.
         Set force=True to proceed with deletion.
+
+        Note: If a document_id doesn't exist, the operation continues without error.
+        The response indicates how many documents were successfully deleted.
         """
         # Internal: database defaults to collection name
         database: str | None = None
@@ -1557,25 +1622,36 @@ async def create_mcp_server() -> FastMCP:
         """
         Create a new collection in a vector database.
 
-        Creates a collection with specified embedding model and optional chunking configuration.
-        All documents in the collection will use this embedding model.
+        This is the primary tool for setting up a new collection. It automatically:
+        1. Creates or bootstraps the database connection if needed (Phase 8.5)
+        2. Auto-detects embedding model from environment variables
+        3. Registers the collection for immediate use
 
-        The embedding parameter defaults to 'auto' which automatically detects the best embedding
-        model from your environment configuration. You typically don't need to specify it.
+        All documents in the collection will use the same embedding model configured here.
 
-        Prerequisites:
-        1. Database registered: register_database(database="name", database_type="milvus")
-        2. Connection initialized: setup_database(database="name")
+        Embedding Auto-Detection (embedding="auto"):
+        - Checks for custom embedding environment variables:
+          * CUSTOM_EMBEDDING_URL (e.g., http://localhost:11434/api/embeddings)
+          * CUSTOM_EMBEDDING_MODEL (e.g., nomic-embed-text)
+          * CUSTOM_EMBEDDING_VECTORSIZE (e.g., 768)
+        - If all three are set: Uses custom_local embedding
+        - Otherwise: Falls back to text-embedding-ada-002 (requires OPENAI_API_KEY)
+
+        Parameters:
+        - collection: Name of the collection to create (required)
+        - database: Internal parameter (defaults to collection name, typically ignored)
+        - embedding: Embedding model (default: "auto" - auto-detects from environment)
+        - chunking_config: Optional chunking configuration (default: Sentence-based, 512 chars)
 
         Next steps:
-        - Write documents: write_documents(database="name", documents=[...])
+        - Write documents: write_documents(collection="docs", documents=[...])
+        - Query documents: query(query="...", collection="docs")
 
         Common errors:
-        - Database not found: Register and initialize it first
-        - Collection already exists: Use delete_collection() to remove it first
-        - Invalid embedding: Use get_supported_embeddings() to see options
-        - Database not initialized: Call setup_database() first
-        - Missing API key: Set OPENAI_API_KEY or configure custom embeddings (CUSTOM_EMBEDDING_URL, etc.)
+        - COLL_ALREADY_EXISTS: Collection already exists - use delete_collection() first
+        - CONFIG_EMBEDDING_INVALID: Invalid embedding model - use get_config(include_embeddings=True)
+        - DB_BOOTSTRAP_FAILED: Failed to create database connection - check environment variables
+        - Missing API key: Set OPENAI_API_KEY or configure custom embeddings
         """
         try:
             # Default database to collection name if not provided
@@ -1585,20 +1661,19 @@ async def create_mcp_server() -> FastMCP:
                     f"Database parameter not provided, defaulting to collection name: {database}"
                 )
 
-            # Validate database is registered
-            if database not in vector_databases:
-                available = list(vector_databases.keys())
+            # Get or bootstrap database connection (Phase 8.5: auto-bootstrap)
+            try:
+                db = get_database_by_name(database, auto_bootstrap=True)
+            except ValueError as e:
                 return error_response(
-                    error_code="DB_NOT_FOUND",
-                    message=f"Database '{database}' not found",
+                    error_code="DB_BOOTSTRAP_FAILED",
+                    message=f"Failed to get or bootstrap database connection for '{database}'",
                     details={
                         "database": database,
-                        "available_databases": available,
+                        "error": str(e),
                     },
-                    suggestion=f"Create the database first: create_database(database='{database}', database_type='milvus')",
+                    suggestion="Ensure vector database environment variables are set correctly (MILVUS_URI or WEAVIATE_URL)",
                 )
-
-            db = get_database_by_name(database)
 
             # Auto-detect embedding from environment
             resolved_embedding = embedding
@@ -1610,9 +1685,9 @@ async def create_mcp_server() -> FastMCP:
                     resolved_embedding = "custom_local"
                     logger.info("Auto-detected custom_local embedding from environment")
                 else:
-                    resolved_embedding = "default"
+                    resolved_embedding = "text-embedding-ada-002"
                     logger.info(
-                        "No custom embedding configured, using default (OpenAI)"
+                        "No custom embedding configured, using default OpenAI (text-embedding-ada-002)"
                     )
 
             # Check if collection already exists
@@ -1724,23 +1799,36 @@ async def create_mcp_server() -> FastMCP:
         ),
     ) -> str:
         """
-        Query a vector database using the default query agent.
+        Query a vector database using semantic search with LLM summarization.
 
-        Returns a natural language summary of relevant documents.
-
-        Prerequisites:
-        - Database must exist and be initialized
-        - Collection must contain documents
+        Returns a natural language summary of relevant documents, ideal for conversational
+        interfaces where you want a synthesized answer rather than raw search results.
 
         Parameters:
-        - limit: Number of results (1-100), default 5
-        - collection: Optional specific collection, uses default if not provided
+        - query: The search query string (required)
+        - limit: Number of results to consider (1-100), default 5
+        - collection: Optional collection name (uses first registered if not provided)
+
+        Returns:
+        JSON response with:
+        - status: "success" or "error"
+        - message: Operation summary
+        - data:
+          - query: The search query
+          - summary: Natural language summary of results
+          - limit: Number of results considered
+        - metadata: Timestamp, operation, database, collection
+
+        Difference from 'search':
+        - query: Returns LLM-generated natural language summary
+        - search: Returns raw results with scores, metadata, and citations
 
         Common errors:
-        - Database not found: Check database name with list_databases()
-        - Collection not found: Check collection name with list_collections()
-        - No results: Collection may be empty or query doesn't match documents
-        - Invalid limit: Must be between 1 and 100
+        - NO_DATABASES: No collections registered - use refresh_databases()
+        - DB_NOT_FOUND: Collection doesn't exist - check with list_collections()
+        - COLL_NOT_FOUND: Collection not found - verify name
+        - PARAM_INVALID_VALUE: Limit must be between 1 and 100
+        - QUERY_FAILED: Query execution failed - check error details
         """
         try:
             # Internal: database defaults to collection name or first registered
@@ -1888,15 +1976,36 @@ async def create_mcp_server() -> FastMCP:
         """
         Search a vector database using vector similarity search with optional quality controls.
 
+        Returns raw search results with scores and metadata, ideal for applications that need
+        detailed result information or want to implement custom ranking/filtering.
+
+        Parameters:
+        - query: The search query string (required)
+        - limit: Maximum number of results (default: 5)
+        - collection: Optional collection name (uses first registered if not provided)
+        - min_score: Minimum similarity score threshold (0-1, optional)
+        - metadata_filters: Filter by metadata fields (dict, optional)
+
         Results include:
         - text: The document text content
         - url: Direct link to the source (top-level for easy access)
         - source_citation: Formatted citation string for easy reference
-        - score/similarity: Relevance score (0-1, higher is better)
+        - score/similarity: Relevance score normalized to 0-1 range (higher is better)
         - metadata: Additional document metadata
         - rank: Position in results (1-based)
 
+        Score Interpretation:
+        - 1.0: Perfect match
+        - 0.8-0.99: Very high similarity
+        - 0.6-0.79: Good similarity
+        - 0.4-0.59: Moderate similarity
+        - 0.0-0.39: Low similarity
+
         Use min_score to filter low-quality results and metadata_filters to narrow by document properties.
+
+        Difference from 'query':
+        - search: Returns raw results with scores, metadata, and citations
+        - query: Returns LLM-generated natural language summary
         """
         try:
             # Internal: database defaults to collection name or first registered

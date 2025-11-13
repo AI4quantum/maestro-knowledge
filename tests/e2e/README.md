@@ -4,11 +4,11 @@ This directory contains end-to-end tests for the Maestro Knowledge MCP (Model Co
 
 ## 🎯 **100% MCP API Test Coverage Achieved!**
 
-Our E2E testing framework now provides **complete coverage of all 26 MCP tools** across both vector database backends:
+Our E2E testing framework provides **complete coverage of all 11 active MCP tools** across both vector database backends:
 - **Milvus**: 10/10 tests passing ✅ (including health endpoint)
-- **Weaviate**: 10/10 tests passing ✅ (including health endpoint) 
+- **Weaviate**: 10/10 tests passing ✅ (including health endpoint)
 - **Total**: 20/20 tests passing across both backends
-- **API Coverage**: 26/26 MCP tools tested (100%) + Health endpoint
+- **API Coverage**: 11/11 active MCP tools tested (100%) + Health endpoint
 
 This ensures robust validation of all MCP server functionality with comprehensive backend compatibility testing.
 
@@ -24,64 +24,44 @@ The MCP E2E tests validate the complete integration between:
 ## Test Structure
 
 ### Test Files
-- `test_mcp_milvus_e2e.py` - Milvus backend tests (**10 tests** - 100% MCP API coverage + Health endpoint)
-- `test_mcp_weaviate_e2e.py` - Weaviate backend tests (**10 tests** - 100% MCP API coverage + Health endpoint)
+- `test_mcp_milvus_e2e.py` - Milvus backend tests (**10 tests** - 11 active tools + Health endpoint)
+- `test_mcp_weaviate_e2e.py` - Weaviate backend tests (**10 tests** - 11 active tools + Health endpoint)
 - `test_mcp_weaviate_simple.py` - Simplified Weaviate tests (3 tests)
 - `test_functions.py` - Shared test logic for backend-agnostic testing
 - `test_functions_simple.py` - Simplified shared test functions
 - `common.py` - Common fixtures and utilities
 - `conftest.py` - Pytest configuration and fixture registration
 
-### Test Coverage - 100% MCP API Coverage (26/26 tools)
+### Test Coverage - 100% Active MCP API Coverage (11/11 tools)
 
-**Database Management (6/6 tools)**
-- Create vector databases (`create_vector_database_tool`)
-- Alternative database setup (`setup_database`) 
-- List databases (`list_databases`)
-- Get database information (`get_database_info`)
-- Database resynchronization (`resync_databases_tool`)
-- Cleanup operations (`cleanup`)
-
-**Collection Management (5/5 tools)**
+**Collection Management (3 tools)**
 - Create collections (`create_collection`)
 - List collections (`list_collections`)
-- Get collection information (`get_collection_info`)
 - Delete collections (`delete_collection`)
-- Get chunking strategies (`get_supported_chunking_strategies`)
 
-**Document Operations (9/9 tools)**
-- Write document batches (`write_documents`)
-- Write individual documents (`write_document`)
-- Collection-specific document writes (`write_document_to_collection`)
+**Document Operations (6 tools)**
+- Write documents (`write_documents`)
 - List documents (`list_documents`)
-- List documents in collections (`list_documents_in_collection`)
 - Count documents (`count_documents`)
-- Get individual documents (`get_document`)
-- Delete individual documents (`delete_document`)
-- Delete documents from collections (`delete_document_from_collection`)
+- Get document (`get_document`)
+- Delete document (`delete_document`)
+- Bulk delete documents (`delete_documents`)
 
-**Bulk Operations (1/1 tools)**
-- Bulk document deletion (`delete_documents`)
-
-**Query Operations (2/2 tools)**
+**Query Operations (2 tools)**
 - Semantic search (`search`)
 - Intelligent query with reasoning (`query`)
-
-**Configuration Discovery (3/3 tools)**
-- Get supported embeddings (`get_supported_embeddings`)
-- Get chunking strategies (`get_supported_chunking_strategies`)
 
 ### Test Categories by Function
 
 **10 Test Functions per Backend:**
-1. `test_database_management` - Database lifecycle and management
+1. `test_collection_management` - Collection lifecycle and management
 2. `test_document_operations` - Document CRUD operations
 3. `test_query_operations` - Search and query functionality
 4. `test_configuration_discovery` - Embedding and chunking discovery
-5. `test_document_retrieval` - Individual document retrieval and setup
+5. `test_document_retrieval` - Individual document retrieval
 6. `test_bulk_operations` - Bulk document operations
 7. `test_collection_specific_operations` - Collection-scoped operations
-8. `test_resync_operations` - Database synchronization
+8. `test_resync_operations` - Database synchronization (if applicable)
 9. `test_health_check` - Health endpoint validation
 10. `test_full_flow` - Complete workflow integration testing
 
@@ -241,13 +221,12 @@ VDB_LOG_LEVEL=debug           # Vector DB logging level
 ### Shared Test Logic
 
 The `test_functions.py` module contains backend-agnostic test implementations:
-- `run_database_management_tests()`
+- `run_collection_management_tests()`
 - `run_document_operations_tests()`
 - `run_query_operations_tests()`
 - `run_configuration_discovery_tests()`
 - `run_bulk_operations_tests()`
 - `run_collection_specific_tests()`
-- `run_resync_operations_tests()`
 - `run_full_flow_test()`
 
 Test entrypoints (`test_mcp_*_e2e.py`) simply call these shared functions with the appropriate backend name.

@@ -1,6 +1,6 @@
 # Maestro Knowledge MCP Server - API Guide
 
-> **Current Version**: v2.0 (2025-01-13)
+> **Current Version**: v2.1 (2025-01-13)
 >
 > **Breaking Changes**: This version includes significant API improvements for better LLM agent integration.
 
@@ -11,11 +11,12 @@ The Maestro Knowledge MCP server has been redesigned to be more intuitive and re
 ### Key Improvements
 
 1. **Structured JSON Responses** - All tools now return consistent JSON instead of plain text
-2. **Simplified Tool Set** - Reduced from 22 to 14 tools by consolidating related functionality
-3. **Explicit Parameters** - No implicit defaults; all operations require clear parameters
-4. **Safety Features** - Destructive operations require explicit confirmation
-5. **Consistent Naming** - Standardized parameter names across all tools
-6. **Better Error Messages** - Error codes and actionable suggestions included
+2. **Simplified Tool Set** - Reduced from 22 to 11 active tools by consolidating related functionality
+3. **Auto-Bootstrap** - Collections auto-create database connections (Phase 8.5)
+4. **Auto-Detection** - Embedding models auto-detected from environment
+5. **Safety Features** - Destructive operations require explicit confirmation
+6. **Consistent Naming** - Standardized parameter names across all tools
+7. **Better Error Messages** - Error codes and actionable suggestions included
 
 ## Breaking Changes
 
@@ -146,22 +147,129 @@ embeddings = response["data"]["supported_embeddings"]
 chunking = response["data"]["supported_chunking"]
 ```
 
+## Phase 8.5 Improvements (2025-01-13)
+
+### Auto-Bootstrap Database Connections
+
+**What Changed:** Collections now automatically create database connections when needed.
+
+**Before (Phase 2.6):**
+```python
+# Step 1: Register database
+await client.call_tool("register_database", {
+    "database": "mydb",
+    "database_type": "milvus",
+    "collection": "docs",
+    "embedding": "auto"
+})
+
+# Step 2: Setup database
+await client.call_tool("setup_database", {"database": "mydb"})
+
+# Step 3: Create collection
+await client.call_tool("create_collection", {
+    "database": "mydb",
+    "collection": "docs"
+})
+```
+
+**After (Phase 8.5):**
+```python
+# Single step: Create collection (auto-bootstraps connection)
+await client.call_tool("create_collection", {
+    "collection": "docs",
+    "embedding": "auto"  # Optional - auto-detects from environment
+})
+```
+
+**Benefits:**
+- Reduced from 3 steps to 1 step
+- No need to manage database connections manually
+- Embedding auto-detection from environment variables
+- Simpler mental model for users
+
+### Auto-Detection of Embeddings
+
+**What Changed:** Embedding models are now auto-detected from environment variables.
+
+**Environment Variables:**
+- `CUSTOM_EMBEDDING_URL` - URL of custom embedding service (e.g., `http://localhost:11434/api/embeddings`)
+- `CUSTOM_EMBEDDING_MODEL` - Model name (e.g., `nomic-embed-text`)
+- `CUSTOM_EMBEDDING_VECTORSIZE` - Vector dimension (e.g., `768`)
+
+**Behavior:**
+```python
+# If custom embedding env vars are set:
+embedding="auto"  # → Uses custom_local
+
+# If no custom embedding configured:
+embedding="auto"  # → Falls back to text-embedding-ada-002 (requires OPENAI_API_KEY)
+```
+
+**Example:**
+```bash
+# Configure custom embeddings
+export CUSTOM_EMBEDDING_URL="http://localhost:11434/api/embeddings"
+export CUSTOM_EMBEDDING_MODEL="nomic-embed-text"
+export CUSTOM_EMBEDDING_VECTORSIZE="768"
+
+# Now create_collection will auto-detect and use custom embeddings
+```
+
+### Optional URL Parameter
+
+**What Changed:** The `url` parameter in `write_documents` is now optional.
+
+**Before:**
+```python
+await client.call_tool("write_documents", {
+    "collection": "docs",
+    "documents": [
+        {"url": "https://example.com/doc1.html"}  # Required
+    ]
+})
+```
+
+**After:**
+```python
+await client.call_tool("write_documents", {
+    "collection": "docs",
+    "documents": [
+        {"text": "Direct text content"}  # url auto-generated from text hash
+    ]
+})
+```
+
+**Auto-Generated URLs:**
+- Format: `text://hash-{first_8_chars_of_sha256}`
+- Example: `text://hash-a1b2c3d4`
+- Ensures unique document IDs even without explicit URLs
+
+### Improved Default Chunking
+
+**What Changed:** Default chunking strategy changed from "None" to "Sentence".
+
+**Before:**
+- Default: No chunking (entire document as single chunk)
+- Required explicit chunking configuration for most use cases
+
+**After:**
+- Default: Sentence-based chunking (512 chars, respects sentence boundaries)
+- Better out-of-box experience for most documents
+- Can still override with custom chunking config
+
 ## Current API Reference
 
-### Available Tools (14 total)
+### Available Tools (11 total)
 
-**Database Management (5 tools):**
-- `create_database` - Create a new database
-- `delete_database` - Delete a database (requires force=True)
-- `get_database_info` - Get database details including supported embeddings/chunking
-- `list_databases` - List all databases
+**Configuration (2 tools):**
+- `get_config` - Get system configuration and capabilities
 - `refresh_databases` - Sync with backend databases
 
-**Collection Management (4 tools):**
+**Collection Management (3 tools):**
 - `create_collection` - Create a new collection
 - `delete_collection` - Delete a collection (requires force=True)
-- `get_collection_info` - Get collection details
-- `list_collections` - List collections in a database
+- `list_collections` - List all collections
 
 **Document Operations (3 tools):**
 - `write_documents` - Write documents to a collection
@@ -174,29 +282,21 @@ chunking = response["data"]["supported_chunking"]
 
 ### Common Workflows
 
-#### Creating a Database and Adding Documents
+#### Creating a Collection and Adding Documents
 
 ```python
 import json
 
-# 1. Create database
-result = await client.call_tool("create_database", {
-    "database": "mydb",
-    "database_type": "milvus"
+# 1. Create collection (auto-bootstraps database connection)
+result = await client.call_tool("create_collection", {
+    "collection": "docs",
+    "embedding": "auto"  # Auto-detects from environment
 })
 response = json.loads(result)
-print(f"Created: {response['data']['database']}")
+print(f"Created: {response['data']['collection']}")
 
-# 2. Create collection
-result = await client.call_tool("create_collection", {
-    "database": "mydb",
-    "collection": "docs",
-    "embedding": "text-embedding-ada-002"
-})
-
-# 3. Write documents
+# 2. Write documents
 result = await client.call_tool("write_documents", {
-    "database": "mydb",
     "collection": "docs",
     "documents": [
         {
@@ -204,7 +304,7 @@ result = await client.call_tool("write_documents", {
             "metadata": {"author": "Alice"}
         },
         {
-            "text": "Direct text content",
+            "text": "Direct text content",  # url auto-generated
             "metadata": {"author": "Bob"}
         }
     ]
@@ -218,7 +318,6 @@ print(f"Wrote {response['data']['documents_written']} documents")
 ```python
 # Search with filters
 result = await client.call_tool("search", {
-    "database": "mydb",
     "collection": "docs",
     "query": "machine learning",
     "limit": 10,
@@ -238,7 +337,6 @@ for doc in response["data"]["results"]:
 ```python
 # Delete documents (requires force)
 result = await client.call_tool("delete_documents", {
-    "database": "mydb",
     "collection": "docs",
     "document_ids": ["doc1", "doc2"],
     "force": True
@@ -246,14 +344,7 @@ result = await client.call_tool("delete_documents", {
 
 # Delete collection (requires force)
 result = await client.call_tool("delete_collection", {
-    "database": "mydb",
     "collection": "docs",
-    "force": True
-})
-
-# Delete database (requires force)
-result = await client.call_tool("delete_database", {
-    "database": "mydb",
     "force": True
 })
 ```

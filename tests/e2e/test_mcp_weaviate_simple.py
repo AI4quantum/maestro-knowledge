@@ -143,16 +143,16 @@ async def test_weaviate_database_management(mcp_http_server: dict[str, Any]) -> 
 
         # Create vector DB
         res = await client.call_tool(
-            "create_database",
+            "create_collection",
             {
-                "database": database,
-                "database_type": "weaviate",  # Only difference from Milvus
+                "collection": database,
+                "embedding": "auto",
             },
         )
         assert hasattr(res, "data")
 
-        # Test list_databases
-        res = await client.call_tool("list_databases")
+        # Test list_collections
+        res = await client.call_tool("list_collections")
         assert hasattr(res, "data")
 
         # Test get_database_info
@@ -165,7 +165,7 @@ async def test_weaviate_database_management(mcp_http_server: dict[str, Any]) -> 
 
         # Cleanup
         res = await client.call_tool(
-            "delete_database", {"database": database, "force": True}
+            "delete_collection", {"collection": database, "force": True}
         )
         assert hasattr(res, "data")
 
@@ -206,10 +206,10 @@ async def test_weaviate_configuration_discovery(
 
             # Create a test database first
             res = await client.call_tool(
-                "create_database",
+                "create_collection",
                 {
-                    "database": database,
-                    "database_type": "weaviate",  # Only difference from Milvus
+                    "collection": database,
+                    "embedding": "auto",
                 },
             )
             assert hasattr(res, "data")
@@ -217,7 +217,7 @@ async def test_weaviate_configuration_discovery(
 
             # Test get_database_info with include_embeddings
             res = await client.call_tool(
-                "get_config", {"database": database, "include_embeddings": True}
+                "get_config", {"collection": database, "include_embeddings": True}
             )
             assert hasattr(res, "data")
             # Backend-agnostic validation - just check we get some response
@@ -228,7 +228,7 @@ async def test_weaviate_configuration_discovery(
 
             # Test get_database_info with include_chunking
             res = await client.call_tool(
-                "get_config", {"database": database, "include_chunking": True}
+                "get_config", {"collection": database, "include_chunking": True}
             )
             assert hasattr(res, "data")
             # Should contain chunking strategies like 'Fixed', 'Sentence', etc.
@@ -242,7 +242,7 @@ async def test_weaviate_configuration_discovery(
 
             # Cleanup
             res = await client.call_tool(
-                "delete_database", {"database": database, "force": True}
+                "delete_collection", {"collection": database, "force": True}
             )
             assert hasattr(res, "data")
             print("✓ Configuration discovery tests completed")

@@ -37,10 +37,12 @@ write_documents(
 ```python
 {
     "text": str,              # Required: Document content
-    "url": str,               # Optional: Source URL (auto-generated if empty)
+    "url": str,               # Optional: Source URL or identifier (auto-generated from text hash if empty)
     "metadata": dict          # Optional: Custom metadata
 }
 ```
+
+**Note**: In Phase 8.5, the `url` field became optional. If not provided or empty, it will be auto-generated from the text content hash.
 
 **Example:**
 ```python
@@ -420,26 +422,171 @@ search(
 
 ---
 
-## Error Handling
+## Response Format Documentation
 
-All tools return JSON responses with consistent structure:
+All tools return JSON responses with consistent structure.
 
-**Success Response:**
+### Success Response Structure
+
 ```json
 {
     "status": "success",
-    "message": "Operation completed",
-    "data": { ... }
+    "message": "Human-readable summary of the operation",
+    "data": {
+        // Tool-specific data (varies by operation)
+    },
+    "metadata": {
+        // Optional metadata (included when relevant)
+        "timestamp": "2025-01-13T16:00:00.000Z",
+        "operation": "tool_name",
+        "database": "collection_name",
+        "collection": "collection_name"
+    }
 }
 ```
 
-**Error Response:**
+**Fields**:
+- `status`: Always "success" for successful operations
+- `message`: Human-readable summary (e.g., "Wrote 3 documents to collection 'docs'")
+- `data`: Tool-specific response data (structure varies by tool)
+- `metadata`: Optional metadata about the operation (timestamp, operation name, etc.)
+
+### Error Response Structure
+
+```json
+{
+    "status": "error",
+    "error_code": "ERROR_CODE",
+    "message": "Human-readable error message",
+    "details": {
+        // Additional error context
+    },
+    "suggestion": "Actionable suggestion to fix the error"
+}
+```
+
+**Fields**:
+- `status`: Always "error" for failed operations
+- `error_code`: Machine-readable error code (see Error Codes section)
+- `message`: Human-readable error description
+- `details`: Optional additional context (parameters, available options, etc.)
+- `suggestion`: Optional actionable suggestion to resolve the error
+
+### Error Codes
+
+Error codes follow a consistent naming convention with prefixes:
+
+**Database/Collection Errors**:
+- `DB_NOT_FOUND`: Collection not found
+- `DB_NOT_INITIALIZED`: Collection not properly initialized
+- `COLL_NOT_FOUND`: Collection not found
+- `COLL_ALREADY_EXISTS`: Collection already exists
+- `COLL_NOT_EMPTY`: Collection contains documents (for delete operations)
+- `COLL_CREATION_FAILED`: Collection creation failed
+- `COLL_DELETE_FAILED`: Collection deletion failed
+- `COLL_INFO_FAILED`: Failed to retrieve collection information
+
+**Document Errors**:
+- `DOC_WRITE_FAILED`: Document write operation failed
+- `DOC_DELETE_FAILED`: Document deletion failed
+- `DOC_DELETE_REQUIRES_FORCE`: Deletion requires force=True
+- `DOC_NOT_FOUND`: Document not found
+- `DOC_RETRIEVAL_FAILED`: Document retrieval failed
+
+**Parameter Errors**:
+- `PARAM_INVALID_VALUE`: Parameter value out of valid range
+- `PARAM_MISSING`: Required parameter missing
+
+**Configuration Errors**:
+- `CONFIG_EMBEDDING_INVALID`: Invalid embedding model specified
+
+**System Errors**:
+- `NO_DATABASES`: No collections registered
+- `QUERY_FAILED`: Query operation failed
+- `SEARCH_FAILED`: Search operation failed
+- `REFRESH_FAILED`: Database refresh failed
+
+### Response Examples by Tool
+
+**write_documents Success**:
+```json
+{
+    "status": "success",
+    "message": "Wrote 2 documents to collection 'docs'",
+    "data": {
+        "documents_written": 2,
+        "chunks_created": 8,
+        "collection": "docs",
+        "embedding_model": "text-embedding-ada-002"
+    },
+    "metadata": {
+        "timestamp": "2025-01-13T16:00:00.000Z",
+        "operation": "write_documents",
+        "collection": "docs",
+        "collection_total_documents": 10,
+        "sample_query": "What is Python programming"
+    }
+}
+```
+
+**query Success**:
+```json
+{
+    "status": "success",
+    "message": "Query completed for 'What is Python?'",
+    "data": {
+        "query": "What is Python?",
+        "summary": "Python is a high-level programming language...",
+        "limit": 5
+    },
+    "metadata": {
+        "timestamp": "2025-01-13T16:00:00.000Z",
+        "operation": "query",
+        "database": "docs",
+        "collection": "docs"
+    }
+}
+```
+
+**search Success**:
+```json
+{
+    "status": "success",
+    "message": "Found 3 results in collection 'docs'",
+    "data": {
+        "query": "Python programming",
+        "results_count": 3,
+        "results": [
+            {
+                "text": "Python is a programming language...",
+                "url": "https://example.com/python",
+                "source_citation": "[Python Guide](https://example.com/python)",
+                "score": 0.92,
+                "metadata": {"author": "John"},
+                "rank": 1
+            }
+        ]
+    },
+    "metadata": {
+        "timestamp": "2025-01-13T16:00:00.000Z",
+        "operation": "search",
+        "collection": "docs",
+        "limit": 10
+    }
+}
+```
+
+**Error Example**:
 ```json
 {
     "status": "error",
     "error_code": "COLL_NOT_FOUND",
     "message": "Collection 'docs' not found",
-    "details": { ... },
+    "details": {
+        "collection": "docs",
+        "database": "docs",
+        "available_collections": ["other_collection"]
+    },
     "suggestion": "Create the collection first: create_collection(collection='docs')"
 }
 ```
@@ -447,6 +594,72 @@ All tools return JSON responses with consistent structure:
 ---
 
 ## Environment Variables
+---
+
+## Parameter Validation
+
+All tools validate their parameters and return clear error messages for invalid values.
+
+### Common Parameter Constraints
+
+**limit** (query, search):
+- Type: integer
+- Range: 1-100 (inclusive)
+- Default: 5
+- Error: `PARAM_INVALID_VALUE` if out of range
+
+**min_score** (search):
+- Type: float
+- Range: 0.0-1.0 (inclusive)
+- Optional: Yes
+- Error: Invalid if outside range
+- Interpretation:
+  - 0.0 = include all results
+  - 0.5 = moderate similarity threshold
+  - 0.7 = good similarity threshold
+  - 0.8 = high similarity threshold
+  - 1.0 = exact matches only
+
+**force** (delete_documents, delete_collection):
+- Type: boolean
+- Default: False
+- Purpose: Safety mechanism requiring explicit confirmation for destructive operations
+- Error: Operation rejected if False and would delete data
+
+**collection**:
+- Type: string
+- Required: Yes (for most operations)
+- Validation: Must exist (checked at runtime)
+- Error: `COLL_NOT_FOUND` if collection doesn't exist
+
+**embedding** (create_collection):
+- Type: string
+- Default: "auto"
+- Valid values:
+  - "auto" - Auto-detect from environment (recommended)
+  - "text-embedding-ada-002" - OpenAI default
+  - "text-embedding-3-small" - OpenAI small
+  - "text-embedding-3-large" - OpenAI large
+  - "custom_local" - Custom embedding (requires env vars)
+- Error: `CONFIG_EMBEDDING_INVALID` if unsupported
+
+**documents** (write_documents):
+- Type: list of dicts
+- Required: Yes
+- Minimum: 1 document
+- Each document must have:
+  - `text` (required): string
+  - `url` (optional): string (auto-generated if empty)
+  - `metadata` (optional): dict
+- Error: Validation error if empty or missing required fields
+
+**metadata_filters** (search):
+- Type: dict
+- Optional: Yes
+- Format: `{"field_name": "value"}`
+- Behavior: AND logic (all filters must match)
+- Example: `{"author": "John", "category": "tech"}`
+
 
 ### Required for OpenAI Embeddings
 ```bash

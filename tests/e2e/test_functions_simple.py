@@ -26,10 +26,10 @@ async def run_database_management_tests(client: "Client", backend_name: str) -> 
 
     # Test create_vector_database_tool
     res = await client.call_tool(
-        "create_database",
+        "create_collection",
         {
-            "database": database,
-            "database_type": config["db_type"],
+            "collection": database,
+            "embedding": "auto",
         },
     )
     assert hasattr(res, "data"), f"create_vector_database_tool failed: {res}"
@@ -38,7 +38,7 @@ async def run_database_management_tests(client: "Client", backend_name: str) -> 
     res = await client.call_tool(
         "create_collection",
         {
-            "database": database,
+            "collection": database,
             "collection": f"{database}_Collection",
             "embedding": "default",
         },
@@ -55,7 +55,7 @@ async def run_database_management_tests(client: "Client", backend_name: str) -> 
 
     # Cleanup
     res = await client.call_tool(
-        "delete_database", {"database": database, "force": True}
+        "delete_collection", {"collection": database, "force": True}
     )
     assert hasattr(res, "data"), f"cleanup failed: {res}"
 
@@ -82,10 +82,10 @@ async def run_configuration_discovery_tests(
 
     # Create a test database first
     res = await client.call_tool(
-        "create_database",
+        "create_collection",
         {
-            "database": database,
-            "database_type": config["db_type"],
+            "collection": database,
+            "embedding": "auto",
             "collection": database,
         },
     )
@@ -93,7 +93,7 @@ async def run_configuration_discovery_tests(
 
     # Test get_database_info with include_embeddings
     res = await client.call_tool(
-        "get_config", {"database": database, "include_embeddings": True}
+        "get_config", {"collection": database, "include_embeddings": True}
     )
     assert hasattr(res, "data")
     # Should contain embedding options (backend-agnostic check)
@@ -101,7 +101,7 @@ async def run_configuration_discovery_tests(
 
     # Test get_database_info with include_chunking
     res = await client.call_tool(
-        "get_config", {"database": database, "include_chunking": True}
+        "get_config", {"collection": database, "include_chunking": True}
     )
     assert hasattr(res, "data")
     # Should contain chunking strategies
@@ -114,6 +114,6 @@ async def run_configuration_discovery_tests(
 
     # Cleanup
     res = await client.call_tool(
-        "delete_database", {"database": database, "force": True}
+        "delete_collection", {"collection": database, "force": True}
     )
     assert hasattr(res, "data")
