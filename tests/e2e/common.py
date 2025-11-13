@@ -218,8 +218,11 @@ def get_backend_config(backend_name: str) -> dict[str, Any]:
 
 
 def get_db_name_for_test(backend_name: str, test_category: str) -> str:
-    """Generate a consistent database name for tests."""
-    return f"E2E_{backend_name.title()}_{test_category}"
+    """Generate a unique database name for tests with timestamp to avoid conflicts."""
+    import time
+
+    timestamp = int(time.time() * 1000) % 100000  # Last 5 digits of milliseconds
+    return f"E2E_{backend_name.title()}_{test_category}_{timestamp}"
 
 
 # Pytest marks for each backend

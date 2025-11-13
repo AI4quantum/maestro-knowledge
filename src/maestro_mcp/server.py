@@ -21,6 +21,17 @@ from src.chunking import ChunkingConfig
 from src.db.vector_db_base import VectorDatabase
 from src.db.vector_db_factory import create_vector_database
 from src.maestro_mcp.error_messages import ErrorMessages
+from src.maestro_mcp.response_formatter import (
+    collection_created_response,
+    collection_deleted_response,
+    database_created_response,
+    database_deleted_response,
+    documents_deleted_response,
+    documents_written_response,
+    error_response,
+    search_results_response,
+    success_response,
+)
 
 
 # Load environment variables from .env file
@@ -503,12 +514,28 @@ async def create_mcp_server() -> FastMCP:
 
             # Validate database type
             if database_type not in ["milvus", "weaviate"]:
-                return ErrorMessages.invalid_database_type(database_type)
+                return error_response(
+                    error_code="PARAM_INVALID_VALUE",
+                    message=f"Invalid database_type: '{database_type}'",
+                    details={
+                        "database_type": database_type,
+                        "valid_types": ["milvus", "weaviate"],
+                    },
+                    suggestion="Use database_type='milvus' or database_type='weaviate'",
+                )
 
             # Check if database with this name already exists
             if database in vector_databases:
                 logger.error(f"Database '{database}' already exists")
-                return ErrorMessages.database_already_exists(database)
+                return error_response(
+                    error_code="DB_ALREADY_EXISTS",
+                    message=f"Database '{database}' already exists",
+                    details={
+                        "database": database,
+                        "existing_databases": list(vector_databases.keys()),
+                    },
+                    suggestion=f"Use a different name or delete the existing database: delete_database(database='{database}', force=True)",
+                )
 
             # Create new database instance (no default collection)
             vector_databases[database] = create_vector_database(database_type)
@@ -557,20 +584,43 @@ async def create_mcp_server() -> FastMCP:
                                 supported = result if isinstance(result, list) else []
                             elif isinstance(supported_attr, list):
                                 supported = supported_attr
-                        return ErrorMessages.invalid_embedding(
-                            resolved_embedding, supported
+                        return error_response(
+                            error_code="CONFIG_EMBEDDING_INVALID",
+                            message=f"Invalid embedding model: '{resolved_embedding}'",
+                            details={
+                                "embedding": resolved_embedding,
+                                "supported_embeddings": supported,
+                            },
+                            suggestion=f"Use one of the supported embeddings: {', '.join(supported)}",
                         )
-                    return str(res)
+                    return error_response(
+                        error_code="DB_CONNECTION_FAILED",
+                        message=f"Failed to initialize database connection: {str(res)}",
+                        details={"database": database, "error": str(res)},
+                    )
 
-            return f"Successfully created and initialized {database_type} vector database '{database}' with '{resolved_embedding}' embedding. Database created. No collections yet. Use create_collection() to add collections."
+            return database_created_response(
+                database=database,
+                database_type=database_type,
+                embedding=resolved_embedding,
+                connection_status="connected",
+                collections_count=0,
+            )
         except Exception as e:
             error_msg = f"Failed to create vector database '{database}': {str(e)}"
             logger.error(error_msg)
-            return f"Error: {error_msg}"
+            return error_response(
+                error_code="DB_CREATION_FAILED",
+                message=error_msg,
+                details={"database": database, "database_type": database_type},
+            )
 
     @app.tool()
     async def write_documents(
         database: str = Field(..., description="Name of the vector database instance"),
+        collection: str = Field(
+            ..., description="Name of the collection to write documents to"
+        ),
         documents: list[dict[str, Any]] = Field(
             ...,
             description=(
@@ -647,8 +697,9 @@ async def create_mcp_server() -> FastMCP:
 
         stats: Any = None
         try:
+            # Pass collection_name directly to write_documents (stateless)
             ok, stats_any = await run_with_timeout(
-                db.write_documents(documents),
+                db.write_documents(documents, collection_name=collection),
                 "write_documents",
                 get_timeout("write_bulk"),
             )
@@ -671,28 +722,44 @@ async def create_mcp_server() -> FastMCP:
                         else []
                     )
 
-                    error_msg = f"{error_msg}\n\nAvailable collections: {available}\n\n"
-                    error_msg += f"Collection '{db.collection_name}' not found. "
-                    error_msg += "Create it first with create_collection(database='{database}', collection='collection_name')."
+                    return error_response(
+                        error_code="COLL_NOT_FOUND",
+                        message=f"Collection '{collection}' not found",
+                        details={
+                            "collection": collection,
+                            "database": database,
+                            "available_collections": available,
+                        },
+                        suggestion=f"Create the collection first: create_collection(database='{database}', collection='{collection}')",
+                    )
 
-                result = {"status": "error", "message": error_msg}
-                return json.dumps(result, indent=2)
+                return error_response(
+                    error_code="DOC_WRITE_FAILED",
+                    message=f"Failed to write documents: {error_msg}",
+                    details={"database": database, "collection": collection},
+                )
             stats = stats_any
         except Exception as e:
             error_msg = f"Failed to write documents: {str(e)}"
 
             # Enhanced error for collection issues
             if "collection" in str(e).lower():
-                error_msg += f"\n\nTip: The collection must be created first with create_collection(database='{database}', collection='your_collection_name')."
+                return error_response(
+                    error_code="COLL_NOT_FOUND",
+                    message=error_msg,
+                    details={"database": database, "collection": collection},
+                    suggestion=f"Create the collection first: create_collection(database='{database}', collection='{collection}')",
+                )
 
-            result = {
-                "status": "error",
-                "message": error_msg,
-            }
-            return json.dumps(result, indent=2)
+            return error_response(
+                error_code="DOC_WRITE_FAILED",
+                message=error_msg,
+                details={"database": database, "error": str(e)},
+            )
 
         # Refresh collection info after write
         post_info: dict[str, Any] | None = None
+        collection_total_docs = None
         try:
             ok, post_info_any = await run_with_timeout(
                 db.get_collection_info(),
@@ -700,10 +767,12 @@ async def create_mcp_server() -> FastMCP:
                 get_timeout("get_collection_info"),
             )
             post_info = cast("dict[str, Any]", post_info_any) if ok else None
+            if post_info:
+                collection_total_docs = post_info.get("document_count")
         except Exception:
             post_info = None
 
-        # Build a sample query suggestion without executing a search (avoid network/API calls here)
+        # Build a sample query suggestion
         sample_query = "What is this collection about?"
         try:
             # Take first non-empty document text and use first few words as query
@@ -717,18 +786,28 @@ async def create_mcp_server() -> FastMCP:
         except Exception:
             pass
 
-        result = {
-            "status": "ok",
-            "message": f"Wrote {len(documents)} document(s)",
-            "write_stats": stats,
-            "collection_info": post_info,
-            "sample_query_suggestion": {
-                "query": sample_query,
-                "limit": 3,
-                "collection": (post_info or {}).get("name"),
-            },
-        }
-        return json.dumps(result, indent=2, default=str)
+        # Extract stats
+        chunks_created = (
+            stats.get("chunks_written", 0) if isinstance(stats, dict) else 0
+        )
+        embedding_model = (
+            (post_info or {}).get("embedding_details", {}).get("name", "unknown")
+            if post_info
+            else "unknown"
+        )
+        collection_name = (
+            (post_info or {}).get("name", collection) if post_info else collection
+        )
+
+        return documents_written_response(
+            database=database,
+            collection=collection_name,
+            documents_written=len(documents),
+            chunks_created=chunks_created,
+            embedding_model=embedding_model,
+            collection_total_documents=collection_total_docs,
+            sample_query=sample_query,
+        )
 
     @app.tool()
     async def delete_documents(
@@ -756,22 +835,39 @@ async def create_mcp_server() -> FastMCP:
 
         # Safety check: require force=True for deletion
         if not force:
-            return (
-                f"Error: Cannot delete {len(document_ids)} documents from collection '{collection}' - "
-                f"this operation requires force=True to proceed. "
-                f"Use: delete_documents(database='{database}', collection='{collection}', "
-                f"document_ids=[...], force=True)"
+            return error_response(
+                error_code="DOC_DELETE_REQUIRES_FORCE",
+                message=f"Cannot delete {len(document_ids)} document{'s' if len(document_ids) != 1 else ''} - force=True required",
+                details={
+                    "database": database,
+                    "collection": collection,
+                    "document_count": len(document_ids),
+                    "document_ids": document_ids[:5]
+                    if len(document_ids) > 5
+                    else document_ids,
+                },
+                suggestion=f"Use force=True to proceed: delete_documents(database='{database}', collection='{collection}', document_ids=[...], force=True)",
             )
 
         ok, _ = await run_with_timeout(
             db.delete_documents(document_ids), "delete", get_timeout("delete")
         )
         if not ok:
-            return f"Error: Failed to delete documents from collection '{collection}' in database '{database}'"
+            return error_response(
+                error_code="DOC_DELETE_FAILED",
+                message=f"Failed to delete documents from collection '{collection}'",
+                details={
+                    "database": database,
+                    "collection": collection,
+                    "document_ids": document_ids,
+                },
+            )
 
-        return (
-            f"Successfully deleted {len(document_ids)} documents from collection '{collection}' "
-            f"in database '{database}'. Warning: This operation cannot be undone."
+        return documents_deleted_response(
+            database=database,
+            collection=collection,
+            documents_deleted=len(document_ids),
+            forced=True,
         )
 
     @app.tool()
@@ -797,8 +893,15 @@ async def create_mcp_server() -> FastMCP:
             else []
         )
         if collection not in collections:
-            raise ValueError(
-                f"Collection '{collection}' not found in vector database '{database}'"
+            return error_response(
+                error_code="COLL_NOT_FOUND",
+                message=f"Collection '{collection}' not found in database '{database}'",
+                details={
+                    "collection": collection,
+                    "database": database,
+                    "available_collections": collections,
+                },
+                suggestion=f"Check available collections: list_collections(database='{database}')",
             )
 
         try:
@@ -809,14 +912,47 @@ async def create_mcp_server() -> FastMCP:
                 get_timeout("list_documents"),
             )
             if not ok:
-                return str(document_any)
+                return error_response(
+                    error_code="DOC_NOT_FOUND",
+                    message=f"Document '{document_id}' not found in collection '{collection}'",
+                    details={
+                        "document_id": document_id,
+                        "collection": collection,
+                        "database": database,
+                    },
+                )
             document: dict[str, Any] = cast("dict[str, Any]", document_any)
-            return f"Document '{document_id}' from collection '{collection}' in vector database '{database}':\n{json.dumps(document, indent=2, default=str)}"
+
+            return success_response(
+                message=f"Retrieved document '{document_id}'",
+                data={
+                    "document_id": document_id,
+                    "document": document,
+                },
+                operation="get_document",
+                database=database,
+                collection=collection,
+            )
         except ValueError as e:
-            # Re-raise ValueError as is (these are user-friendly error messages)
-            raise e
+            return error_response(
+                error_code="DOC_RETRIEVAL_FAILED",
+                message=str(e),
+                details={
+                    "document_id": document_id,
+                    "collection": collection,
+                    "database": database,
+                },
+            )
         except Exception as e:
-            raise ValueError(f"Failed to retrieve document '{document_id}': {e}")
+            return error_response(
+                error_code="DOC_RETRIEVAL_FAILED",
+                message=f"Failed to retrieve document '{document_id}': {str(e)}",
+                details={
+                    "document_id": document_id,
+                    "collection": collection,
+                    "database": database,
+                },
+            )
 
     @app.tool()
     async def delete_collection(
@@ -850,11 +986,19 @@ async def create_mcp_server() -> FastMCP:
                 else []
             )
             if collection is None or collection not in collections:
-                raise ValueError(
-                    f"Collection '{collection}' not found in vector database '{database}'"
+                return error_response(
+                    error_code="COLL_NOT_FOUND",
+                    message=f"Collection '{collection}' not found in database '{database}'",
+                    details={
+                        "collection": collection,
+                        "database": database,
+                        "available_collections": collections,
+                    },
+                    suggestion=f"Check available collections: list_collections(database='{database}')",
                 )
 
             # Safety check: if force=False, check if collection is empty
+            documents_deleted = 0
             if not force:
                 # Get document count for the collection
                 ok, count_any = await run_with_timeout(
@@ -867,11 +1011,26 @@ async def create_mcp_server() -> FastMCP:
                 )
 
                 if doc_count > 0:
-                    return (
-                        f"Error: Cannot delete collection '{collection}' - it contains {doc_count} documents. "
-                        f"This operation requires force=True to proceed. "
-                        f"Use: delete_collection(database='{database}', collection='{collection}', force=True)"
+                    return error_response(
+                        error_code="COLL_NOT_EMPTY",
+                        message=f"Cannot delete collection '{collection}' - it contains {doc_count} documents",
+                        details={
+                            "collection": collection,
+                            "database": database,
+                            "document_count": doc_count,
+                        },
+                        suggestion=f"Use force=True to delete: delete_collection(database='{database}', collection='{collection}', force=True)",
                     )
+            else:
+                # Count documents for response
+                ok, count_any = await run_with_timeout(
+                    db.count_documents_in_collection(collection),
+                    "count_documents",
+                    get_timeout("list_documents"),
+                )
+                documents_deleted = (
+                    cast("int", count_any) if ok and isinstance(count_any, int) else 0
+                )
 
             ok, _ = await run_with_timeout(
                 db.delete_collection(collection),
@@ -879,16 +1038,26 @@ async def create_mcp_server() -> FastMCP:
                 get_timeout("delete"),
             )
             if not ok:
-                return f"Error: Failed to delete collection '{collection}' from vector database '{database}'"
+                return error_response(
+                    error_code="COLL_DELETE_FAILED",
+                    message=f"Failed to delete collection '{collection}' from database '{database}'",
+                    details={"collection": collection, "database": database},
+                )
 
-            warning = " Warning: This operation cannot be undone." if force else ""
-            return f"Successfully deleted collection '{collection}' from vector database '{database}'.{warning}"
+            return collection_deleted_response(
+                database=database,
+                collection=collection,
+                documents_deleted=documents_deleted,
+                forced=force,
+            )
         try:
             from src.db.vector_db_milvus import MilvusVectorDatabase
 
             if collection is None:
-                raise ValueError(
-                    "collection_name must be provided to delete a collection"
+                return error_response(
+                    error_code="PARAM_MISSING",
+                    message="collection parameter is required",
+                    details={"parameter": "collection"},
                 )
             temp_db = MilvusVectorDatabase(collection_name=collection)
             ok, _ = await run_with_timeout(
@@ -897,10 +1066,22 @@ async def create_mcp_server() -> FastMCP:
                 get_timeout("delete"),
             )
             if not ok:
-                return f"Error: Failed to delete collection '{collection}' from Milvus (untracked)."
-            return f"Successfully dropped collection '{collection}' from Milvus (untracked)."
+                return error_response(
+                    error_code="COLL_DELETE_FAILED",
+                    message=f"Failed to delete collection '{collection}' from Milvus (untracked)",
+                    details={"collection": collection},
+                )
+            return success_response(
+                message=f"Successfully dropped collection '{collection}' from Milvus (untracked)",
+                data={"collection": collection, "untracked": True},
+                operation="delete_collection",
+            )
         except Exception as e:
-            return f"Delete collection failed: {str(e)}"
+            return error_response(
+                error_code="COLL_DELETE_FAILED",
+                message=f"Delete collection failed: {str(e)}",
+                details={"collection": collection, "error": str(e)},
+            )
 
     @app.tool()
     async def delete_database(
@@ -922,6 +1103,7 @@ async def create_mcp_server() -> FastMCP:
             db = get_database_by_name(database)
 
             # Safety check: if force=False, check if database has collections
+            collections_deleted = 0
             if not force:
                 ok, colls_any = await run_with_timeout(
                     db.list_collections(),
@@ -935,22 +1117,46 @@ async def create_mcp_server() -> FastMCP:
                 )
 
                 if len(collections) > 0:
-                    return (
-                        f"Error: Cannot delete database '{database}' - it contains {len(collections)} collections. "
-                        f"Collections: {', '.join(collections)}. "
-                        f"This operation requires force=True to proceed. "
-                        f"Use: delete_database(database='{database}', force=True)"
+                    return error_response(
+                        error_code="DB_NOT_EMPTY",
+                        message=f"Cannot delete database '{database}' - it contains {len(collections)} collections",
+                        details={
+                            "database": database,
+                            "collections_count": len(collections),
+                            "collections": collections,
+                        },
+                        suggestion=f"Use force=True to delete: delete_database(database='{database}', force=True)",
                     )
+            else:
+                # Count collections for response
+                ok, colls_any = await run_with_timeout(
+                    db.list_collections(),
+                    "list_collections",
+                    get_timeout("list_collections"),
+                )
+                collections = (
+                    cast("list[str]", colls_any)
+                    if ok and isinstance(colls_any, list)
+                    else []
+                )
+                collections_deleted = len(collections)
 
             ok, _ = await run_with_timeout(
                 db.cleanup(), "cleanup", get_timeout("cleanup")
             )
             if not ok:
-                return f"Error: Failed to cleanup vector database '{database}'"
+                return error_response(
+                    error_code="DB_CLEANUP_FAILED",
+                    message=f"Failed to cleanup vector database '{database}'",
+                    details={"database": database},
+                )
             del vector_databases[database]
 
-            warning = " Warning: This operation cannot be undone." if force else ""
-            return f"Successfully cleaned up and removed vector database '{database}'.{warning}"
+            return database_deleted_response(
+                database=database,
+                collections_deleted=collections_deleted,
+                forced=force,
+            )
         try:
             from src.db.vector_db_milvus import MilvusVectorDatabase
 
@@ -961,12 +1167,22 @@ async def create_mcp_server() -> FastMCP:
                 get_timeout("cleanup"),
             )
             if not ok:
-                return f"Error: Failed to cleanup (drop) collection '{database}' from Milvus (untracked)."
-            return (
-                f"Successfully dropped collection '{database}' from Milvus (untracked)."
+                return error_response(
+                    error_code="COLL_DELETE_FAILED",
+                    message=f"Failed to cleanup (drop) collection '{database}' from Milvus (untracked)",
+                    details={"collection": database},
+                )
+            return success_response(
+                message=f"Successfully dropped collection '{database}' from Milvus (untracked)",
+                data={"collection": database, "untracked": True},
+                operation="delete_database",
             )
         except Exception as e:
-            return f"Cleanup failed: {str(e)}"
+            return error_response(
+                error_code="DB_CLEANUP_FAILED",
+                message=f"Cleanup failed: {str(e)}",
+                details={"database": database, "error": str(e)},
+            )
 
     @app.tool()
     async def get_database_info(
@@ -992,16 +1208,27 @@ async def create_mcp_server() -> FastMCP:
             db.count_documents(), "count_documents", get_timeout("count_documents")
         )
         count = int(cnt_any) if ok else -1
-        info = {
-            "name": database,
-            "type": db.db_type,
-            "collection": db.collection_name,
-            "document_count": count,
+
+        # Get collections list
+        ok_colls, colls_any = await run_with_timeout(
+            db.list_collections(), "list_collections", get_timeout("list_collections")
+        )
+        collections = (
+            cast("list[str]", colls_any)
+            if ok_colls and isinstance(colls_any, list)
+            else []
+        )
+
+        data: dict[str, Any] = {
+            "database": database,
+            "database_type": db.db_type,
+            "collections_count": len(collections),
+            "total_documents": count,
         }
 
         if include_embeddings:
             embeddings = db.supported_embeddings()
-            info["supported_embeddings"] = embeddings
+            data["supported_embeddings"] = embeddings
 
         if include_chunking:
             # Keep this in sync with the src/chunking/ package defaults
@@ -1053,12 +1280,17 @@ async def create_mcp_server() -> FastMCP:
                 "chunk_text_default_strategy": ChunkingConfig().strategy,
                 "default_params_when_strategy_set": {"chunk_size": 512, "overlap": 0},
             }
-            info["supported_chunking"] = {
+            data["supported_chunking"] = {
                 "strategies": strategies,
                 "notes": defaults_behavior,
             }
 
-        return f"Database information for '{database}':\n{json.dumps(info, indent=2)}"
+        return success_response(
+            message=f"Database '{database}' information",
+            data=data,
+            operation="get_database_info",
+            database=database,
+        )
 
     @app.tool()
     async def list_collections(
@@ -1074,9 +1306,47 @@ async def create_mcp_server() -> FastMCP:
         )
 
         if not collections:
-            return f"No collections found in vector database '{database}'"
+            return success_response(
+                message=f"No collections found in database '{database}'",
+                data={
+                    "collections": [],
+                    "total_collections": 0,
+                },
+                operation="list_collections",
+                database=database,
+            )
 
-        return f"Collections in vector database '{database}':\n{json.dumps(collections, indent=2)}"
+        # Build collection details list
+        collections_data = []
+        for coll in collections:
+            coll_data = {"name": coll}
+            # Try to get basic info for each collection
+            try:
+                ok_info, info_any = await run_with_timeout(
+                    db.get_collection_info(coll),
+                    "get_collection_info",
+                    get_timeout("get_collection_info"),
+                )
+                if ok_info and isinstance(info_any, dict):
+                    info = cast("dict[str, Any]", info_any)
+                    if "embedding_details" in info:
+                        emb = info["embedding_details"]
+                        coll_data["embedding"] = emb.get("name", "unknown")
+                    if "created_at" in info:
+                        coll_data["created_at"] = info["created_at"]
+            except Exception:
+                pass  # Best effort
+            collections_data.append(coll_data)
+
+        return success_response(
+            message=f"Found {len(collections)} collection{'s' if len(collections) != 1 else ''} in database '{database}'",
+            data={
+                "collections": collections_data,
+                "total_collections": len(collections),
+            },
+            operation="list_collections",
+            database=database,
+        )
 
     @app.tool()
     async def get_collection_info(
@@ -1107,21 +1377,67 @@ async def create_mcp_server() -> FastMCP:
                 get_timeout("get_collection_info"),
             )
         if not ok:
-            return str(info_any)
+            return error_response(
+                error_code="COLL_INFO_FAILED",
+                message=f"Failed to get collection info: {str(info_any)}",
+                details={"database": database, "collection": collection},
+            )
         info: dict[str, Any] = cast("dict[str, Any]", info_any)
 
-        # Add document count if requested
-        if include_count:
+        # Build structured response data
+        coll_name = info.get("name", collection or "default")
+        data: dict[str, Any] = {
+            "name": coll_name,
+            "database": database,
+        }
+
+        # Add document/chunk counts
+        if "document_count" in info:
+            data["document_count"] = info["document_count"]
+        if "chunk_count" in info:
+            data["chunk_count"] = info["chunk_count"]
+
+        # Add document count if requested and not already present
+        if include_count and "document_count" not in data:
             ok_count, count_any = await run_with_timeout(
                 db.count_documents(), "count_documents", get_timeout("read")
             )
             if ok_count:
                 count = int(count_any) if count_any is not None else 0
-                info["document_count"] = count
+                data["document_count"] = count
 
-        return (
-            f"Collection information for '{info.get('name')}' in vector database "
-            f"'{database}':\n{json.dumps(info, indent=2)}"
+        # Add embedding details
+        if "embedding_details" in info:
+            emb = info["embedding_details"]
+            data["embedding"] = {
+                "model": emb.get("name", "unknown"),
+                "provider": emb.get("provider", "unknown"),
+                "vector_size": emb.get("vector_size"),
+            }
+            if "url" in emb:
+                data["embedding"]["url"] = emb["url"]
+
+        # Add chunking details
+        if "chunking_config" in info:
+            chunk = info["chunking_config"]
+            data["chunking"] = {
+                "strategy": chunk.get("strategy", "unknown"),
+                "chunk_size": chunk.get("chunk_size"),
+                "overlap": chunk.get("overlap"),
+            }
+
+        # Add timestamps if available
+        if "created_at" in info:
+            data["created_at"] = info["created_at"]
+        if "last_updated" in info:
+            data["last_updated"] = info["last_updated"]
+
+        return success_response(
+            message=f"Collection '{coll_name}' information",
+            data=data,
+            operation="get_collection_info",
+            database=database,
+            collection=coll_name,
         )
 
     @app.tool()
@@ -1170,7 +1486,15 @@ async def create_mcp_server() -> FastMCP:
             # Validate database is registered
             if database not in vector_databases:
                 available = list(vector_databases.keys())
-                return ErrorMessages.database_not_found(database, available)
+                return error_response(
+                    error_code="DB_NOT_FOUND",
+                    message=f"Database '{database}' not found",
+                    details={
+                        "database": database,
+                        "available_databases": available,
+                    },
+                    suggestion=f"Create the database first: create_database(database='{database}', database_type='milvus')",
+                )
 
             db = get_database_by_name(database)
 
@@ -1201,7 +1525,16 @@ async def create_mcp_server() -> FastMCP:
                 else []
             )
             if collection in existing_collections:
-                return ErrorMessages.collection_already_exists(collection, database)
+                return error_response(
+                    error_code="COLL_ALREADY_EXISTS",
+                    message=f"Collection '{collection}' already exists in database '{database}'",
+                    details={
+                        "collection": collection,
+                        "database": database,
+                        "existing_collections": existing_collections,
+                    },
+                    suggestion=f"Use a different name or delete the existing collection: delete_collection(database='{database}', collection='{collection}', force=True)",
+                )
 
             # Create the collection using the create_collection method
             if hasattr(db, "create_collection"):
@@ -1226,23 +1559,56 @@ async def create_mcp_server() -> FastMCP:
                                 supported = result if isinstance(result, list) else []
                             elif isinstance(supported_attr, list):
                                 supported = supported_attr
-                        return ErrorMessages.invalid_embedding(embedding, supported)
+                        return error_response(
+                            error_code="CONFIG_EMBEDDING_INVALID",
+                            message=f"Invalid embedding model: '{resolved_embedding}'",
+                            details={
+                                "embedding": resolved_embedding,
+                                "supported_embeddings": supported,
+                            },
+                            suggestion=f"Use one of the supported embeddings: {', '.join(supported)}",
+                        )
                     elif (
                         "not initialized" in error_str.lower()
                         or "not connected" in error_str.lower()
                     ):
-                        return ErrorMessages.database_not_initialized(database)
-                    return str(res)
+                        return error_response(
+                            error_code="DB_NOT_INITIALIZED",
+                            message=f"Database '{database}' is not initialized",
+                            details={"database": database},
+                            suggestion=f"The database connection may have failed during creation",
+                        )
+                    return error_response(
+                        error_code="COLL_CREATION_FAILED",
+                        message=f"Failed to create collection: {error_str}",
+                        details={"database": database, "collection": collection},
+                    )
             else:
-                return f"Error: Database '{database}' does not support create_collection method"
+                return error_response(
+                    error_code="COLL_CREATION_FAILED",
+                    message=f"Database '{database}' does not support create_collection method",
+                    details={"database": database, "database_type": db.db_type},
+                )
 
-            return f"Successfully created collection '{collection}' in vector database '{database}' with embedding '{embedding}'"
+            # Determine chunking strategy for response
+            chunking_strategy = "Sentence"  # default
+            if chunking_config and "strategy" in chunking_config:
+                chunking_strategy = chunking_config["strategy"]
+
+            return collection_created_response(
+                database=database,
+                collection=collection,
+                embedding=resolved_embedding,
+                chunking_strategy=chunking_strategy,
+            )
 
         except Exception as e:
             error_msg = f"Failed to create collection '{collection}' in vector database '{database}': {str(e)}"
             logger.error(error_msg)
-            return ErrorMessages.generic_operation_failed(
-                "create collection", database, str(e)
+            return error_response(
+                error_code="COLL_CREATION_FAILED",
+                message=error_msg,
+                details={"database": database, "collection": collection},
             )
 
     @app.tool()
@@ -1278,12 +1644,25 @@ async def create_mcp_server() -> FastMCP:
         try:
             # Validate limit
             if limit < 1 or limit > 100:
-                return ErrorMessages.invalid_limit(limit, 1, 100)
+                return error_response(
+                    error_code="PARAM_INVALID_VALUE",
+                    message=f"Invalid limit: {limit}. Must be between 1 and 100",
+                    details={"limit": limit, "min": 1, "max": 100},
+                    suggestion="Use a limit value between 1 and 100",
+                )
 
             # Validate database exists
             if database not in vector_databases:
                 available = list(vector_databases.keys())
-                return ErrorMessages.database_not_found(database, available)
+                return error_response(
+                    error_code="DB_NOT_FOUND",
+                    message=f"Database '{database}' not found",
+                    details={
+                        "database": database,
+                        "available_databases": available,
+                    },
+                    suggestion=f"Create the database first: create_database(database='{database}', database_type='milvus')",
+                )
 
             db = get_database_by_name(database)
             kwargs: dict[str, Any] = {"limit": limit}
@@ -1309,19 +1688,61 @@ async def create_mcp_server() -> FastMCP:
                         if ok_list and isinstance(colls_any, list)
                         else []
                     )
-                    return ErrorMessages.collection_not_found(
-                        collection or "default", database, available_colls
+                    return error_response(
+                        error_code="COLL_NOT_FOUND",
+                        message=f"Collection '{collection or 'default'}' not found in database '{database}'",
+                        details={
+                            "collection": collection or "default",
+                            "database": database,
+                            "available_collections": available_colls,
+                        },
+                        suggestion=f"Check available collections: list_collections(database='{database}')",
                     )
-                return str(response)
+                return error_response(
+                    error_code="QUERY_FAILED",
+                    message=f"Query failed: {error_str}",
+                    details={
+                        "database": database,
+                        "query": query,
+                        "collection": collection,
+                    },
+                )
+
             # response is expected to be a string summary
-            return str(response)
+            return success_response(
+                message=f"Query completed for '{query}'",
+                data={
+                    "query": query,
+                    "summary": str(response),
+                    "limit": limit,
+                },
+                operation="query",
+                database=database,
+                collection=collection,
+            )
         except KeyError:
             available = list(vector_databases.keys())
-            return ErrorMessages.database_not_found(database, available)
+            return error_response(
+                error_code="DB_NOT_FOUND",
+                message=f"Database '{database}' not found",
+                details={
+                    "database": database,
+                    "available_databases": available,
+                },
+                suggestion=f"Create the database first: create_database(database='{database}', database_type='milvus')",
+            )
         except Exception as e:
             error_msg = f"Failed to query vector database '{database}': {str(e)}"
             logger.error(error_msg)
-            return ErrorMessages.generic_operation_failed("query", database, str(e))
+            return error_response(
+                error_code="QUERY_FAILED",
+                message=error_msg,
+                details={
+                    "database": database,
+                    "query": query,
+                    "collection": collection,
+                },
+            )
 
     @app.tool()
     async def search(
@@ -1368,13 +1789,50 @@ async def create_mcp_server() -> FastMCP:
                 db.search(query, **kwargs), "search", get_timeout("search")
             )
             if not ok:
-                return str(response)
-            # Serialize list of results to JSON string for consistent str tool output
-            return json.dumps(response, indent=2, default=str)
+                return error_response(
+                    error_code="SEARCH_FAILED",
+                    message=f"Search failed: {str(response)}",
+                    details={
+                        "database": database,
+                        "query": query,
+                        "collection": collection,
+                    },
+                )
+
+            # response should be a list of results
+            results = response if isinstance(response, list) else []
+
+            return search_results_response(
+                database=database,
+                query=query,
+                results_count=len(results),
+                results=results,
+                collection=collection,
+                limit=limit,
+            )
+        except KeyError:
+            available = list(vector_databases.keys())
+            return error_response(
+                error_code="DB_NOT_FOUND",
+                message=f"Database '{database}' not found",
+                details={
+                    "database": database,
+                    "available_databases": available,
+                },
+                suggestion=f"Create the database first: create_database(database='{database}', database_type='milvus')",
+            )
         except Exception as e:
             error_msg = f"Failed to search vector database '{database}': {str(e)}"
             logger.error(error_msg)
-            return f"Error: {error_msg}"
+            return error_response(
+                error_code="SEARCH_FAILED",
+                message=error_msg,
+                details={
+                    "database": database,
+                    "query": query,
+                    "collection": collection,
+                },
+            )
 
     @app.tool()
     async def list_databases() -> str:
@@ -1384,7 +1842,11 @@ async def create_mcp_server() -> FastMCP:
         )
 
         if not vector_databases:
-            return "No vector databases are currently active"
+            return success_response(
+                message="No vector databases are currently active",
+                data={"databases": [], "count": 0},
+                operation="list_databases",
+            )
 
         db_list = []
         for db_name, db in vector_databases.items():
@@ -1405,7 +1867,11 @@ async def create_mcp_server() -> FastMCP:
             )
 
         logger.info(f"Returning {len(db_list)} databases")
-        return f"Available vector databases:\n{json.dumps(db_list, indent=2)}"
+        return success_response(
+            message=f"Found {len(db_list)} vector database(s)",
+            data={"databases": db_list, "count": len(db_list)},
+            operation="list_databases",
+        )
 
     @app.tool()
     async def refresh_databases() -> str:
@@ -1413,20 +1879,28 @@ async def create_mcp_server() -> FastMCP:
         try:
             added_milvus = await resync_vector_databases()
             added_weaviate = await resync_weaviate_databases()
-            return json.dumps(
-                {
+
+            total_added = len(added_milvus) + len(added_weaviate)
+
+            return success_response(
+                message=f"Refreshed databases: {total_added} collection{'s' if total_added != 1 else ''} discovered",
+                data={
                     "milvus": {"added": added_milvus, "count": len(added_milvus)},
                     "weaviate": {
                         "added": added_weaviate,
                         "count": len(added_weaviate),
                     },
-                    "total_count": len(added_milvus) + len(added_weaviate),
+                    "total_added": total_added,
                 },
-                indent=2,
+                operation="refresh_databases",
             )
         except Exception as e:
             logger.exception("Failed to run resync_databases tool")
-            return json.dumps({"error": str(e)}, indent=2)
+            return error_response(
+                error_code="REFRESH_FAILED",
+                message=f"Failed to refresh databases: {str(e)}",
+                details={"error": str(e)},
+            )
 
     # Attempt an automatic resync on startup so that in-memory registry reflects
     # any pre-existing Milvus collections created outside this process.

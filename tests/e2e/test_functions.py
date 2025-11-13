@@ -11,12 +11,40 @@ appropriate backend configuration.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import json
+from typing import TYPE_CHECKING, Any
 
 from tests.e2e.common import get_backend_config, get_db_name_for_test
 
 if TYPE_CHECKING:
     from fastmcp import Client
+
+
+def parse_response(res: object) -> dict[str, Any]:
+    """Parse MCP tool response to JSON.
+
+    Args:
+        res: Response from client.call_tool()
+
+    Returns:
+        Parsed JSON response dict
+    """
+    if hasattr(res, "data"):
+        # MCP response object with data attribute
+        data = res.data
+        if isinstance(data, str):
+            try:
+                return json.loads(data)
+            except json.JSONDecodeError:
+                # If not JSON, wrap in success response
+                return {"status": "success", "data": data}
+        return data if isinstance(data, dict) else {"status": "success", "data": data}
+    elif isinstance(res, str):
+        try:
+            return json.loads(res)
+        except json.JSONDecodeError:
+            return {"status": "success", "data": res}
+    return res
 
 
 async def run_database_management_tests(client: Client, backend_name: str) -> None:
@@ -32,7 +60,9 @@ async def run_database_management_tests(client: Client, backend_name: str) -> No
             "database_type": config["db_type"],
         },
     )
-    assert hasattr(res, "data"), f"create_vector_database_tool failed: {res}"
+    response = parse_response(res)
+    assert response["status"] == "success", f"create_database failed: {response}"
+    assert response["data"]["database"] == db_name
 
     # Test create_collection
     res = await client.call_tool(
@@ -42,33 +72,41 @@ async def run_database_management_tests(client: Client, backend_name: str) -> No
             "collection": f"{db_name}_Collection",
         },
     )
-    assert hasattr(res, "data"), f"create_collection failed: {res}"
+    response = parse_response(res)
+    assert response["status"] == "success", f"create_collection failed: {response}"
 
     # Test list_collections
     res = await client.call_tool("list_collections", {"database": db_name})
-    assert hasattr(res, "data"), f"list_collections failed: {res}"
+    response = parse_response(res)
+    assert response["status"] == "success", f"list_collections failed: {response}"
 
     # Test get_collection_info
     res = await client.call_tool("get_collection_info", {"database": db_name})
-    assert hasattr(res, "data"), f"get_collection_info failed: {res}"
+    response = parse_response(res)
+    assert response["status"] == "success", f"get_collection_info failed: {response}"
 
     # Test list_databases - HIGH PRIORITY addition
     res = await client.call_tool("list_databases")
-    assert hasattr(res, "data"), f"list_databases failed: {res}"
+    response = parse_response(res)
+    assert response["status"] == "success", f"list_databases failed: {response}"
     # Verify our database appears in the list
-    assert db_name in str(res.data), (
+    databases_list = response["data"]["databases"]
+    database_names = [db["name"] for db in databases_list]
+    assert db_name in database_names, (
         f"Database {db_name} not found in list_databases result"
     )
 
     # Test get_database_info - HIGH PRIORITY addition
     res = await client.call_tool("get_database_info", {"database": db_name})
-    assert hasattr(res, "data"), f"get_database_info failed: {res}"
+    response = parse_response(res)
+    assert response["status"] == "success", f"get_database_info failed: {response}"
 
     # Cleanup
     res = await client.call_tool(
         "delete_database", {"database": db_name, "force": True}
     )
-    assert hasattr(res, "data"), f"cleanup failed: {res}"
+    response = parse_response(res)
+    assert response["status"] == "success", f"cleanup failed: {response}"
 
 
 async def run_document_operations_tests(client: Client, backend_name: str) -> None:
@@ -84,7 +122,8 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
             "database_type": config["db_type"],
         },
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
     res = await client.call_tool(
         "create_collection",
@@ -93,7 +132,8 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
             "collection": f"{db_name}_Collection",
         },
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
     # Test write_documents
     docs = [
@@ -110,60 +150,39 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
         "write_documents",
         {
             "database": db_name,
+            "collection": f"{db_name}_Collection",
             "documents": docs,
         },
     )
-    # Accept string or object response
-    if not hasattr(res, "data"):
-        import json
-
-        try:
-            res_data = json.loads(res) if isinstance(res, str) else res
-        except Exception:
-            res_data = res
-        assert res_data, f"write_documents failed: {res}"
+    response = parse_response(res)
+    assert response["status"] == "success", f"write_documents failed: {response}"
 
     # Test get_collection_info with count
     res = await client.call_tool(
         "get_collection_info", {"database": db_name, "include_count": True}
     )
-    if not hasattr(res, "data") and isinstance(res, str):
-        assert res, f"get_collection_info with count failed: {res}"
+    response = parse_response(res)
+    assert response["status"] == "success", (
+        f"get_collection_info with count failed: {response}"
+    )
 
     # Test delete_documents (use search to get a document ID first)
     res = await client.call_tool(
         "search", {"database": db_name, "query": "test", "limit": 1}
     )
-    first_doc_id = None
-    if hasattr(res, "data"):
-        search_results = res.data if isinstance(res.data, list) else []
-        if (
-            search_results
-            and isinstance(search_results, list)
-            and len(search_results) > 0
-        ):
-            first_doc = search_results[0]
-            if isinstance(first_doc, dict):
-                first_doc_id = (
-                    first_doc.get("id")
-                    or first_doc.get("doc_id")
-                    or first_doc.get("document_id")
-                )
-    elif isinstance(res, str):
-        import json
+    response = parse_response(res)
+    assert response["status"] == "success", f"search failed: {response}"
 
-        try:
-            search_results = json.loads(res)
-            if isinstance(search_results, list) and len(search_results) > 0:
-                first_doc = search_results[0]
-                if isinstance(first_doc, dict):
-                    first_doc_id = (
-                        first_doc.get("id")
-                        or first_doc.get("doc_id")
-                        or first_doc.get("document_id")
-                    )
-        except Exception:
-            pass
+    search_results = response["data"].get("results", [])
+    first_doc_id = None
+    if search_results and len(search_results) > 0:
+        first_doc = search_results[0]
+        if isinstance(first_doc, dict):
+            first_doc_id = (
+                first_doc.get("id")
+                or first_doc.get("doc_id")
+                or first_doc.get("document_id")
+            )
 
     if first_doc_id:
         res = await client.call_tool(
@@ -175,21 +194,27 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
                 "force": True,
             },
         )
-        if not hasattr(res, "data") and isinstance(res, str):
-            assert res, f"delete_documents failed: {res}"
+        response = parse_response(res)
+        assert response["status"] == "success", f"delete_documents failed: {response}"
 
     # Cleanup
     res = await client.call_tool(
         "delete_database", {"database": db_name, "force": True}
     )
-    if not hasattr(res, "data") and isinstance(res, str):
-        assert res, f"cleanup failed: {res}"
+    response = parse_response(res)
+    assert response["status"] == "success", f"cleanup failed: {response}"
 
 
 async def run_query_operations_tests(client: Client, backend_name: str) -> None:
     """Test query and search operations."""
     config = get_backend_config(backend_name)
     db_name = get_db_name_for_test(backend_name, "Query_Ops")
+
+    # Cleanup any existing database first
+    try:
+        await client.call_tool("delete_database", {"database": db_name, "force": True})
+    except Exception:
+        pass
 
     # Setup
     res = await client.call_tool(
@@ -199,7 +224,8 @@ async def run_query_operations_tests(client: Client, backend_name: str) -> None:
             "database_type": config["db_type"],
         },
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
     res = await client.call_tool(
         "create_collection",
@@ -208,7 +234,8 @@ async def run_query_operations_tests(client: Client, backend_name: str) -> None:
             "collection": f"{db_name}_Collection",
         },
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
     # Write test documents
     docs = [
@@ -229,10 +256,12 @@ async def run_query_operations_tests(client: Client, backend_name: str) -> None:
         "write_documents",
         {
             "database": db_name,
+            "collection": f"{db_name}_Collection",
             "documents": docs,
         },
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
     # Test search
     res = await client.call_tool(
@@ -243,7 +272,8 @@ async def run_query_operations_tests(client: Client, backend_name: str) -> None:
             "limit": 2,
         },
     )
-    assert hasattr(res, "data") or hasattr(res, "content"), f"search failed: {res}"
+    response = parse_response(res)
+    assert response["status"] == "success", f"search failed: {response}"
 
     # Test query (intelligent query with reasoning)
     res = await client.call_tool(
@@ -254,19 +284,27 @@ async def run_query_operations_tests(client: Client, backend_name: str) -> None:
             "limit": 1,
         },
     )
-    assert hasattr(res, "data") or hasattr(res, "content"), f"query failed: {res}"
+    response = parse_response(res)
+    assert response["status"] == "success", f"query failed: {response}"
 
     # Cleanup
     res = await client.call_tool(
         "delete_database", {"database": db_name, "force": True}
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
 
 async def run_configuration_discovery_tests(client: Client, backend_name: str) -> None:
     """Test configuration discovery operations: get_database_info with embeddings and chunking."""
     config = get_backend_config(backend_name)
     db_name = get_db_name_for_test(backend_name, "Config_Test")
+
+    # Cleanup any existing database first
+    try:
+        await client.call_tool("delete_database", {"database": db_name, "force": True})
+    except Exception:
+        pass
 
     # Create a test database first
     res = await client.call_tool(
@@ -276,43 +314,55 @@ async def run_configuration_discovery_tests(client: Client, backend_name: str) -
             "database_type": config["db_type"],
         },
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
     # Test get_database_info with include_embeddings
     res = await client.call_tool(
         "get_database_info", {"database": db_name, "include_embeddings": True}
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
     # Should contain embedding options (backend-specific validation)
+    data_str = json.dumps(response["data"])
     if backend_name == "milvus":
-        assert "custom_local" in res.data or "custom" in res.data.lower()
+        assert "custom_local" in data_str or "custom" in data_str.lower()
     elif backend_name == "weaviate":
-        assert "default" in res.data or "text2vec" in res.data.lower()
+        assert "default" in data_str or "text2vec" in data_str.lower()
 
     # Test get_database_info with include_chunking
     res = await client.call_tool(
         "get_database_info", {"database": db_name, "include_chunking": True}
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
     # Should contain chunking strategies
+    data_str = json.dumps(response["data"])
     strategies_mentioned = any(
-        strategy in res.data for strategy in ["Fixed", "Sentence", "Semantic"]
+        strategy in data_str for strategy in ["Fixed", "Sentence", "Semantic"]
     )
     assert strategies_mentioned, (
-        f"Expected chunking strategies not found in: {res.data}"
+        f"Expected chunking strategies not found in: {response['data']}"
     )
 
     # Cleanup
     res = await client.call_tool(
         "delete_database", {"database": db_name, "force": True}
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
 
 async def run_document_retrieval_tests(client: Client, backend_name: str) -> None:
     """Test document retrieval operations: get_document."""
     config = get_backend_config(backend_name)
     db_name = get_db_name_for_test(backend_name, "Doc_Retrieval")
+
+    # Cleanup any existing database first
+    try:
+        await client.call_tool("delete_database", {"database": db_name, "force": True})
+    except Exception:
+        pass
 
     # Create the database (now includes setup)
     res = await client.call_tool(
@@ -322,7 +372,8 @@ async def run_document_retrieval_tests(client: Client, backend_name: str) -> Non
             "database_type": config["db_type"],
         },
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
     # Create collection
     res = await client.call_tool(
@@ -332,7 +383,8 @@ async def run_document_retrieval_tests(client: Client, backend_name: str) -> Non
             "collection": f"{db_name}_Collection",
         },
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
     # Write a test document to retrieve later
     test_doc = {
@@ -345,19 +397,23 @@ async def run_document_retrieval_tests(client: Client, backend_name: str) -> Non
         "write_documents",
         {
             "database": db_name,
+            "collection": f"{db_name}_Collection",
             "documents": [test_doc],
         },
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
     # Get document list to find a document ID
     res = await client.call_tool(
         "search", {"database": db_name, "query": "*", "limit": 1}
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
-    if isinstance(res.data, list) and len(res.data) > 0:
-        doc_id = res.data[0].get("id")
+    search_results = response["data"].get("results", [])
+    if search_results and len(search_results) > 0:
+        doc_id = search_results[0].get("id")
         if doc_id:
             # Test get_document
             res = await client.call_tool(
@@ -368,19 +424,27 @@ async def run_document_retrieval_tests(client: Client, backend_name: str) -> Non
                     "document_id": doc_id,
                 },
             )
-            assert hasattr(res, "data")
+            response = parse_response(res)
+            assert response["status"] == "success"
 
     # Cleanup
     res = await client.call_tool(
         "delete_database", {"database": db_name, "force": True}
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
 
 async def run_bulk_operations_tests(client: Client, backend_name: str) -> None:
     """Test bulk operations: delete_documents."""
     config = get_backend_config(backend_name)
     db_name = get_db_name_for_test(backend_name, "Bulk_Ops")
+
+    # Cleanup any existing database first
+    try:
+        await client.call_tool("delete_database", {"database": db_name, "force": True})
+    except Exception:
+        pass
 
     # Setup
     res = await client.call_tool(
@@ -390,7 +454,8 @@ async def run_bulk_operations_tests(client: Client, backend_name: str) -> None:
             "database_type": config["db_type"],
         },
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
     res = await client.call_tool(
         "create_collection",
@@ -399,7 +464,8 @@ async def run_bulk_operations_tests(client: Client, backend_name: str) -> None:
             "collection": f"{db_name}_Collection",
         },
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
     # Write multiple documents for bulk deletion
     docs = [
@@ -413,19 +479,23 @@ async def run_bulk_operations_tests(client: Client, backend_name: str) -> None:
         "write_documents",
         {
             "database": db_name,
+            "collection": f"{db_name}_Collection",
             "documents": docs,
         },
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
     # Get document IDs for bulk deletion
     res = await client.call_tool(
         "search", {"database": db_name, "query": "*", "limit": 10}
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
-    if isinstance(res.data, list) and len(res.data) >= 2:
-        doc_ids = [doc.get("id") for doc in res.data[:2] if doc.get("id")]
+    search_results = response["data"].get("results", [])
+    if search_results and len(search_results) >= 2:
+        doc_ids = [doc.get("id") for doc in search_results[:2] if doc.get("id")]
         if doc_ids:
             # Test delete_documents (bulk)
             res = await client.call_tool(
@@ -434,15 +504,18 @@ async def run_bulk_operations_tests(client: Client, backend_name: str) -> None:
                     "database": db_name,
                     "collection": f"{db_name}_Collection",
                     "document_ids": doc_ids,
+                    "force": True,
                 },
             )
-            assert hasattr(res, "data")
+            response = parse_response(res)
+            assert response["status"] == "success"
 
     # Cleanup
     res = await client.call_tool(
         "delete_database", {"database": db_name, "force": True}
     )
-    assert hasattr(res, "data")
+    response = parse_response(res)
+    assert response["status"] == "success"
 
 
 async def run_collection_specific_tests(client: Client, backend_name: str) -> None:
@@ -459,6 +532,14 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
     skip_reason = None
 
     try:
+        # Cleanup any existing database first
+        try:
+            await client.call_tool(
+                "delete_database", {"database": db_name, "force": True}
+            )
+        except Exception:
+            pass
+
         # Setup
         res = await client.call_tool(
             "create_database",
@@ -467,8 +548,11 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
                 "database_type": config["db_type"],
             },
         )
-        if not hasattr(res, "data"):
-            skip_reason = f"Could not create vector database for {backend_name}: {res}"
+        response = parse_response(res)
+        if response["status"] != "success":
+            skip_reason = (
+                f"Could not create vector database for {backend_name}: {response}"
+            )
         else:
             needs_cleanup = True
 
@@ -480,8 +564,11 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
                     "collection": collection_name,
                 },
             )
-            if not hasattr(res, "data"):
-                skip_reason = f"Could not create collection for {backend_name}: {res}"
+            response = parse_response(res)
+            if response["status"] != "success":
+                skip_reason = (
+                    f"Could not create collection for {backend_name}: {response}"
+                )
 
         # Verify collection existence (retry for Weaviate) - only if no skip reason yet
         if skip_reason is None:
@@ -489,8 +576,10 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
             max_retries = 5 if backend_name == "weaviate" else 1
             for attempt in range(max_retries):
                 res = await client.call_tool("list_collections", {"database": db_name})
-                if hasattr(res, "data") and isinstance(res.data, list):
-                    if collection_name in res.data:
+                response = parse_response(res)
+                if response["status"] == "success":
+                    collections = response["data"].get("collections", [])
+                    if collection_name in collections:
                         collection_found = True
                         break
                 if backend_name == "weaviate" and attempt < max_retries - 1:
@@ -523,8 +612,9 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
                 ],
             },
         )
-        if not hasattr(res, "data"):
-            pytest.fail(f"write_documents failed for {backend_name}: {res}")
+        response = parse_response(res)
+        if response["status"] != "success":
+            pytest.fail(f"write_documents failed for {backend_name}: {response}")
 
         # Test search in collection
         res = await client.call_tool(
@@ -536,8 +626,9 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
                 "limit": 10,
             },
         )
-        if not hasattr(res, "data"):
-            pytest.fail(f"search failed for {backend_name}: {res}")
+        response = parse_response(res)
+        if response["status"] != "success":
+            pytest.fail(f"search failed for {backend_name}: {response}")
 
         # Test delete_documents - need to find document ID first from search
         res = await client.call_tool(
@@ -549,9 +640,11 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
                 "limit": 10,
             },
         )
+        response = parse_response(res)
         doc_id = None
-        if hasattr(res, "data") and isinstance(res.data, list):
-            for doc in res.data:
+        if response["status"] == "success":
+            search_results = response["data"].get("results", [])
+            for doc in search_results:
                 if (
                     isinstance(doc, dict)
                     and doc.get("metadata", {}).get("doc_name") == doc_name
@@ -569,8 +662,9 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
                     "force": True,
                 },
             )
-            if not hasattr(res, "data"):
-                pytest.fail(f"delete_documents failed for {backend_name}: {res}")
+            response = parse_response(res)
+            if response["status"] != "success":
+                pytest.fail(f"delete_documents failed for {backend_name}: {response}")
 
         # Test delete_collection - MEDIUM PRIORITY addition
         res = await client.call_tool(
@@ -581,13 +675,16 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
                 "force": True,
             },
         )
-        if not hasattr(res, "data"):
-            pytest.fail(f"delete_collection failed for {backend_name}: {res}")
+        response = parse_response(res)
+        if response["status"] != "success":
+            pytest.fail(f"delete_collection failed for {backend_name}: {response}")
 
         # Verify collection was deleted by checking it no longer appears in list
         res = await client.call_tool("list_collections", {"database": db_name})
-        if hasattr(res, "data") and isinstance(res.data, list):
-            if collection_name in res.data:
+        response = parse_response(res)
+        if response["status"] == "success":
+            collections = response["data"].get("collections", [])
+            if collection_name in collections:
                 pytest.fail(
                     f"Collection '{collection_name}' still exists after deletion for {backend_name}"
                 )
@@ -616,15 +713,13 @@ async def run_resync_operations_tests(client: Client, backend_name: str) -> None
     """Test database resynchronization functionality."""
     # Test refresh_databases
     res = await client.call_tool("refresh_databases")
-    assert hasattr(res, "data"), f"refresh_databases failed: {res}"
+    response = parse_response(res)
+    assert response["status"] == "success", f"refresh_databases failed: {response}"
 
     # Validate the response indicates successful execution
     # Note: For MCP-created collections, this might return 0 discoveries
     # but should still execute without error
-    result_data = res.data if hasattr(res, "data") else ""
-    assert isinstance(result_data, (str, dict, list)), (
-        f"Unexpected response format: {result_data}"
-    )
+    assert "data" in response, f"Missing data in response: {response}"
 
 
 async def run_health_check_tests(
@@ -676,6 +771,14 @@ async def run_full_flow_test(client: Client, backend_name: str) -> None:
     db_name = get_db_name_for_test(backend_name, "Full_Flow")
 
     try:
+        # Cleanup any existing database first
+        try:
+            await client.call_tool(
+                "delete_database", {"database": db_name, "force": True}
+            )
+        except Exception:
+            pass
+
         # Create vector DB
         res = await client.call_tool(
             "create_database",
@@ -684,8 +787,11 @@ async def run_full_flow_test(client: Client, backend_name: str) -> None:
                 "database_type": config["db_type"],
             },
         )
-        if not hasattr(res, "data"):
-            pytest.skip(f"Could not create vector database for {backend_name}: {res}")
+        response = parse_response(res)
+        if response["status"] != "success":
+            pytest.skip(
+                f"Could not create vector database for {backend_name}: {response}"
+            )
 
         # Create collection with chunking config (retry for Weaviate)
         collection_created = False
@@ -705,14 +811,15 @@ async def run_full_flow_test(client: Client, backend_name: str) -> None:
                     },
                 },
             )
-            if hasattr(res, "data"):
+            response = parse_response(res)
+            if response["status"] == "success":
                 collection_created = True
                 break
             if backend_name == "weaviate":
                 await asyncio.sleep(1)
         if not collection_created:
             pytest.skip(
-                f"Could not create collection for {backend_name} after retries: {res}"
+                f"Could not create collection for {backend_name} after retries: {response}"
             )
 
         # Write documents
@@ -730,32 +837,37 @@ async def run_full_flow_test(client: Client, backend_name: str) -> None:
             "write_documents",
             {
                 "database": db_name,
+                "collection": db_name,
                 "documents": docs,
             },
         )
-        if not hasattr(res, "data"):
-            pytest.fail(f"write_documents failed for {backend_name}: {res}")
+        response = parse_response(res)
+        if response["status"] != "success":
+            pytest.fail(f"write_documents failed for {backend_name}: {response}")
 
         # List documents
         res = await client.call_tool(
             "search", {"database": db_name, "query": "*", "limit": 10}
         )
-        if not hasattr(res, "data"):
-            pytest.fail(f"list_documents failed for {backend_name}: {res}")
+        response = parse_response(res)
+        if response["status"] != "success":
+            pytest.fail(f"search failed for {backend_name}: {response}")
 
         # Count documents via get_collection_info
         res = await client.call_tool(
             "get_collection_info", {"database": db_name, "include_count": True}
         )
-        if not hasattr(res, "data"):
+        response = parse_response(res)
+        if response["status"] != "success":
             pytest.fail(
-                f"get_collection_info with count failed for {backend_name}: {res}"
+                f"get_collection_info with count failed for {backend_name}: {response}"
             )
 
         # Get collection info
         res = await client.call_tool("get_collection_info", {"database": db_name})
-        if not hasattr(res, "data"):
-            pytest.fail(f"get_collection_info failed for {backend_name}: {res}")
+        response = parse_response(res)
+        if response["status"] != "success":
+            pytest.fail(f"get_collection_info failed for {backend_name}: {response}")
 
         # Search
         res = await client.call_tool(
@@ -766,8 +878,9 @@ async def run_full_flow_test(client: Client, backend_name: str) -> None:
                 "limit": 1,
             },
         )
-        if not (hasattr(res, "data") or hasattr(res, "content")):
-            pytest.fail(f"search failed for {backend_name}: {res}")
+        response = parse_response(res)
+        if response["status"] != "success":
+            pytest.fail(f"search failed for {backend_name}: {response}")
 
     except Exception as e:
         pytest.fail(f"Exception in full flow test for {backend_name}: {e}")
