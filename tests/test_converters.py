@@ -9,6 +9,8 @@ from src.converters import (
     get_converter_registry,
 )
 
+pytestmark = pytest.mark.unit
+
 
 class TestContentDetector:
     """Test content type detection."""

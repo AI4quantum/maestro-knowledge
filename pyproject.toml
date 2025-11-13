@@ -45,6 +45,10 @@ filterwarnings = [
     "ignore::UserWarning:src.db.vector_db_weaviate",
     # Suppress asyncio loop warnings from cancelled database operations - these occur during timeout handling
     "ignore:.*got Future.*attached to a different loop:UserWarning",
+    # Suppress gRPC cleanup warnings during pytest teardown (known grpcio issue)
+    # See: https://github.com/grpc/grpc/issues/37535
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+    "ignore::RuntimeWarning",
 ]
 # Enable async test support with session-scoped event loop for E2E tests
 asyncio_mode = "auto"

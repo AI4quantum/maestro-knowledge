@@ -719,11 +719,22 @@ class MilvusVectorDatabase(VectorDatabase):
             return []
 
         try:
+            # Check if event loop is running before async operation
+            import asyncio
+
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                # Event loop is closed, return empty list gracefully
+                return []
+
             # Get all collections from the client
             collections = await self.client.list_collections()
             return collections
         except Exception as e:
-            warnings.warn(f"Could not list collections from Milvus: {e}")
+            # Suppress warning if it's just an event loop closure during cleanup
+            if "Event loop is closed" not in str(e):
+                warnings.warn(f"Could not list collections from Milvus: {e}")
             return []
 
     async def list_documents_in_collection(

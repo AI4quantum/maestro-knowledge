@@ -19,6 +19,8 @@ project_root = Path(__file__).parent.parent.resolve()
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.mark.asyncio
 async def test_no_input_wrapper_in_schemas() -> None:
