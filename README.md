@@ -20,25 +20,23 @@ A modular vector database interface supporting multiple backends (Weaviate, Milv
 - **Environment variable substitution**: Dynamic configuration with `{{ENV_VAR_NAME}}` syntax
 - **Safety features**: Confirmation prompts for destructive operations with `--force` flag bypass
 
-## Recent Updates (Phase 9)
+## Recent Updates
 
-**Phase 9: LLM Usability Refactoring** - Major improvements for AI agent integration:
+**Version 2.0** - Major improvements for AI agent integration:
 
-- **Tool Consolidation (9.1)**: Reduced from 22 to 14 MCP tools for simpler API
-- **No Default Collections (9.2)**: Explicit collection parameter required for clarity
-- **JSON Response Format (9.3)**: All tools return structured JSON with status, message, data, and metadata
-- **Parameter Consistency (9.4)**: Standardized naming (`database`, `collection`, `document_name`)
-- **Safety Features (9.5)**: Destructive operations require `force=True` parameter
-- **Enhanced Embedding Info (9.6)**: Better embedding model information in responses
-- **Database Sync (9.7)**: Automatic database synchronization at server startup
+- **Structured JSON Responses**: All tools return consistent JSON format
+- **Simplified API**: Reduced from 22 to 14 tools
+- **Explicit Parameters**: No implicit defaults
+- **Safety Features**: Destructive operations require `force=True`
+- **Consistent Naming**: Standardized parameter names
 
 **Breaking Changes:**
 - All MCP tools now return JSON instead of plain text
 - `write_documents` requires explicit `collection` parameter
-- Destructive operations require `force=True` (delete_database, delete_collection, delete_documents)
-- Parameter names updated: `db_name` → `database`, `collection_name` → `collection`, `doc_name` → `document_name`
+- Destructive operations require `force=True`
+- Parameter names updated: `db_name` → `database`, `collection_name` → `collection`
 
-See [MIGRATION_GUIDE.md](docs/MIGRATION_GUIDE.md) for complete migration details.
+**📖 See [MIGRATION_GUIDE.md](docs/MIGRATION_GUIDE.md) for complete API reference and migration guide.**
 
 ## Chunking Strategies
 

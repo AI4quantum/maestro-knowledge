@@ -1,1115 +1,50 @@
-# Migration Guide: Maestro Knowledge LLM-Friendly Refactoring
+# Maestro Knowledge MCP Server - API Guide
 
-> **✅ REFACTORING COMPLETE**
+> **Current Version**: v2.0 (2025-01-13)
 >
-> **Current Status**: Phases 1-8.5 COMPLETE ✅ (2025-01-12)
->
-> **For AI Agents**: Check `docs/AGENTS.md` for development tips and common pitfalls
+> **Breaking Changes**: This version includes significant API improvements for better LLM agent integration.
 
-## Migration Status Tracker
+## What Changed
 
-| Phase | Status | Description | Breaking Changes |
-|-------|--------|-------------|------------------|
-| Phase 1 | ✅ COMPLETE | Remove 'input' wrapper | YES - All tool calls |
-| Phase 2 | ✅ COMPLETE | Remove per-write embedding | YES - Embedding architecture |
-| Phase 2.5 | ✅ COMPLETE | Improve embedding docs | NO |
-| Phase 2.6 | ✅ COMPLETE | Separate setup from collection creation | YES - Tool naming & workflow |
-| Phase 3 | ✅ COMPLETE | Fix reassembly bug | NO - Internal improvement |
-| Phase 4 | ✅ COMPLETE | Add search quality controls | NO - Backward compatible |
-| Phase 5 | ✅ COMPLETE | Improve citation format | NO - Additive only |
-| Phase 6 | ✅ COMPLETE | Enhance error messages | NO - Backward compatible |
-| Phase 7 | ✅ COMPLETE | Update test suite | NO |
-| Phase 8 | ✅ COMPLETE | Update documentation | NO |
-| Phase 8.5 | ✅ COMPLETE | LLM usability improvements | NO - Backward compatible |
-| Phase 9 | 🔄 IN PROGRESS | LLM Usability Refactoring | YES - JSON responses, parameters |
-| Phase 10 | � PLANNED | Add ownership metadata | NO |
-| Phase 11 | 📋 PLANNED | Implement access control | NO |
+The Maestro Knowledge MCP server has been redesigned to be more intuitive and reliable for AI agents and application developers. All changes focus on making the API clearer, safer, and easier to use.
 
-## Current API Reference (Post-Phase 8.5)
+### Key Improvements
 
-**All changes from Phases 1-8.5 are now in effect.** Use this as your reference for current usage:
+1. **Structured JSON Responses** - All tools now return consistent JSON instead of plain text
+2. **Simplified Tool Set** - Reduced from 22 to 14 tools by consolidating related functionality
+3. **Explicit Parameters** - No implicit defaults; all operations require clear parameters
+4. **Safety Features** - Destructive operations require explicit confirmation
+5. **Consistent Naming** - Standardized parameter names across all tools
+6. **Better Error Messages** - Error codes and actionable suggestions included
 
-### 2-Step Database Setup (Phase 8.5 - Simplified)
+## Breaking Changes
 
-```python
-# Step 1: Register database (now includes setup with auto-detect)
-await register_database(
-    database="mydb",
-    database_type="milvus",
-    collection="docs",
-    embedding="auto"  # Optional - auto-detects from environment
-)
+### 1. JSON Response Format
 
-# Step 2: Create collection
-await create_collection(
-    database="mydb",
-    collection="docs",
-    embedding="auto"  # Optional - auto-detects from environment
-)
-```
-
-**Auto-Detection:** When `embedding="auto"` (the default), the system checks for:
-- `CUSTOM_EMBEDDING_URL` - URL of custom embedding service (e.g., `http://localhost:11434/api/embeddings`)
-- `CUSTOM_EMBEDDING_MODEL` - Model name (e.g., `nomic-embed-text`)
-- `CUSTOM_EMBEDDING_VECTORSIZE` - Vector dimension (e.g., `768`)
-
-If all three are set, uses `custom_local`. Otherwise, falls back to OpenAI `text-embedding-ada-002`.
-
-### Writing Documents (Phase 2 & 8.5)
-
-```python
-# No embedding parameter - uses collection's embedding model
-# URL is now optional - auto-generated from text hash if empty
-await write_documents(
-    database="mydb",
-    documents=[
-        {"url": "https://example.com/doc.html"},
-        {"text": "Direct text without URL"},  # URL auto-generated
-        {"url": "doc2", "text": "Direct text", "metadata": {"author": "Alice"}}
-    ]
-)
-
-# Single document write with optional collection parameter
-await write_document(
-    database="mydb",
-    text="Document content",
-    url="",  # Optional - auto-generated if empty
-    collection="docs",  # Optional - uses last created if not specified
-    metadata={"author": "Bob"}
-)
-```
-
-### Search with Quality Controls (Phase 4)
-
-```python
-# Filter by minimum similarity score and metadata
-results = await search(
-    database="mydb",
-    query="machine learning",
-    limit=10,
-    min_score=0.8,  # Only high-quality matches
-    metadata_filters={"language": "python", "level": "beginner"}
-)
-```
-
-### Improved Citations (Phase 5)
-
-```python
-# Results now include ready-to-use citations
-for result in results:
-    print(result['text'])  # Chunk text
-    print(result['url'])  # Direct link (top-level)
-    print(result['source_citation'])  # "Source: Doc Name (url)"
-    print(result['score'])  # Normalized 0-1 similarity
-```
-
-### Parameter Names (Phase 1)
-
-- `database` (not `db_name`)
-- `database_type` (not `db_type`)
-- `collection` (not `collection_name`)
-- `document_name` (not `doc_name`)
-- No `input` wrapper - all parameters at top level
-
----
-
-## Overview
-
-The Maestro Knowledge MCP server has been refactored to be more LLM-agent friendly:
-1. **Removed nested 'input' wrappers** (Phase 1) ✅
-2. **Simplified embedding architecture** (Phase 2) ✅
-3. **Added 3-step workflow** (Phase 2.6) ✅
-4. **Fixed critical bugs** (Phase 3) ✅
-5. **Added search quality controls** (Phase 4) ✅
-6. **Improved citations** (Phase 5) ✅
-7. **Enhanced error messages** (Phase 6) ✅
-
-## Breaking Changes by Phase
-
-### Phase 1: Flat Parameter Structure (COMPLETED)
-
-**What Changed:**
-- Removed nested `{"input": {...}}` wrapper from all tool calls
-- All parameters are now at the top level of the request object
-- Removed 21 Input model classes from the codebase
-
-**Migration Required:** YES - All tool calls must be updated
-
-#### Before (Old Format)
-```python
-# Old nested format with 'input' wrapper
-await client.call_tool("create_vector_database_tool", {
-    "input": {
-        "db_name": "mydb",
-        "db_type": "milvus",
-        "collection_name": "docs"
-    }
-})
-
-await client.call_tool("query", {
-    "input": {
-        "db_name": "mydb",
-        "query": "What is this about?",
-        "limit": 5
-    }
-})
-```
-
-#### After (New Format)
-```python
-# New flat format - parameters at top level
-await client.call_tool("create_vector_database_tool", {
-    "database": "mydb",
-    "database_type": "milvus",
-    "collection": "docs"
-})
-
-await client.call_tool("query", {
-    "database": "mydb",
-    "query": "What is this about?",
-    "limit": 5
-})
-```
-
-### Phase 2: Embedding Architecture Simplification (COMPLETED)
-
-**What Changed:**
-- Removed `embedding` parameter from all write operations (write_documents, write_document, write_document_to_collection)
-- Embedding model is now configured ONLY during collection creation (setup_database, create_collection)
-- All documents in a collection use the same embedding model (required for vector search consistency)
-- Simplified API with clearer semantics
-
-**Migration Required:** YES - Remove embedding parameter from write calls
-
-**Rationale:** Per-document embedding configuration was confusing and technically incorrect. Vector search requires all documents in a collection to use the same embedding model for meaningful similarity comparisons.
-
-#### API Changes
-
-**Before (Phase 1):**
-```python
-# Old: Embedding could be specified per-write (INCORRECT)
-await client.call_tool("write_documents", {
-    "database": "mydb",
-    "documents": [...],
-    "embedding": "text-embedding-ada-002"  # ❌ Removed
-})
-```
-
-**After (Phase 2):**
-```python
-# Step 1: Set embedding during collection creation
-await client.call_tool("setup_database", {
-    "database": "mydb",
-    "embedding": "text-embedding-ada-002"  # ✅ Set once here
-})
-
-# Step 2: Write documents (no embedding parameter)
-await client.call_tool("write_documents", {
-    "database": "mydb",
-
-### Phase 2.5: Improved Embedding Documentation (COMPLETED)
-
-**What Changed:**
-- Enhanced documentation for `embedding` parameter in `setup_database` and `create_collection`
-- Clarified available embedding options and their behavior
-- Added explicit guidance on when to use `custom_local` embedding
-
-**Migration Required:** NO - Documentation only
-
-**Benefits:**
-- Clearer understanding of embedding options
-- Better guidance for custom embedding configuration
-- Explicit documentation of 'default' behavior
-
-### Phase 2.6: Separated Database Setup from Collection Creation (COMPLETED)
-
-**What Changed:**
-- `setup_database` now ONLY initializes database connection (no longer creates collections)
-- Added new `create_collection()` method to vector database implementations
-- Renamed `create_vector_database_tool` to `register_database` for clarity
-- Collections must now be created explicitly using `create_collection()`
-
-**Migration Required:** YES - Workflow changes required
-
-**Rationale:** Clearer separation of concerns makes the API more explicit and easier to understand for LLM agents. Database initialization and collection creation are now distinct operations.
-
-#### Before (Phase 2)
-```python
-# Old: setup_database created a default collection
-await client.call_tool("create_vector_database_tool", {
-    "database": "mydb",
-    "database_type": "milvus",
-    "collection": "docs"
-})
-
-await client.call_tool("setup_database", {
-    "database": "mydb",
-    "embedding": "text-embedding-ada-002"
-})
-# Collection was created automatically during setup
-```
-
-#### After (Phase 2.6)
-```python
-# New: Explicit three-step process
-# Step 1: Register database instance
-await client.call_tool("register_database", {  # Renamed from create_vector_database_tool
-    "database": "mydb",
-    "database_type": "milvus",
-    "collection": "docs"  # Default collection name only
-})
-
-# Step 2: Initialize connection
-await client.call_tool("setup_database", {
-    "database": "mydb",
-    "embedding": "text-embedding-ada-002"
-})
-
-# Step 3: Explicitly create collection
-await client.call_tool("create_collection", {
-    "database": "mydb",
-    "collection": "docs",
-    "embedding": "text-embedding-ada-002"
-})
-```
-
-#### Tool Naming Changes
-- `create_vector_database_tool` → `register_database` (more accurate name)
-- `setup_database` behavior changed (no longer creates collections)
-- `cleanup` remains the counterpart to both `register_database` and `setup_database`
-
-#### Operation Symmetry
-```
-register_database    → Creates registry entry
-setup_database      → Initializes connection  
-create_collection   → Creates collection
-delete_collection   → Deletes collection
-cleanup             → Closes connection & removes registry entry
-```
-
-### Phase 3: Fixed Document Reassembly Bug (COMPLETED)
-
-**What Changed:**
-- Fixed critical bug where overlapping text chunks were duplicated during document reassembly
-- Implemented intelligent overlap detection using chunk metadata
-- Added fallback text-based overlap detection when metadata unavailable
-- No API changes - purely internal improvement
-
-**Migration Required:** NO - Automatic improvement, no code changes needed
-
-**Impact:** Documents with overlapping chunks (e.g., using Fixed chunking with `overlap > 0`) will now be correctly reassembled without text duplication.
-
-#### The Problem
-
-When documents were chunked with overlap (common with Fixed chunking strategy), the reassembly process would duplicate the overlapping text:
-
-```python
-# Example with overlap=10
-Chunk 1: "The quick brown fox "
-Chunk 2: "brown fox jumps over"  # "brown fox " overlaps
-
-# Before Phase 3 (BUGGY):
-Result: "The quick brown fox brown fox jumps over"  # ❌ Duplication!
-
-# After Phase 3 (FIXED):
-Result: "The quick brown fox jumps over"  # ✅ Correct!
-```
-
-#### The Solution
-
-The fix uses a two-tier approach:
-
-1. **Primary: Offset-based detection** - Uses `offset_start` and `offset_end` metadata to mathematically calculate overlap
-2. **Fallback: Text-based detection** - Compares text strings when metadata unavailable
-
-#### Benefits for Users
-
-- **Automatic improvement** - No code changes required
-- **Works with all chunking strategies** - Fixed, Sentence, and Semantic
-- **Backward compatible** - Existing code continues to work
-- **Better document quality** - No more duplicated text in retrieved documents
-
-#### Technical Details
-
-The reassembly logic now:
-- Sorts chunks by sequence number
-- Detects overlap using `offset_start`/`offset_end` metadata
-- Skips overlapping portions when concatenating
-- Falls back to text comparison if metadata missing
-- Preserves all non-chunk-specific metadata
-
-#### Example Scenarios
-
-### Phase 4: Search Quality Controls (COMPLETED)
-
-**What Changed:**
-- Added `min_score` parameter to filter low-quality search results
-- Added `metadata_filters` parameter to filter results by document metadata
-- Both parameters are optional and backward compatible
-
-**Migration Required:** NO - Existing code continues to work, new parameters are optional
-
-**Benefits:**
-- Filter out irrelevant results with `min_score` threshold
-- Narrow searches by document properties with `metadata_filters`
-- Improved search precision for LLM agents
-
-#### New Parameters
-
-**`min_score` (optional):**
-- Type: `float` (0-1 range)
-- Filters results below the specified similarity score
-- Higher scores indicate better matches
-- Example: `min_score=0.8` keeps only high-confidence results
-
-**`metadata_filters` (optional):**
-- Type: `dict[str, Any]`
-- Filters results by metadata field values
-- Only results matching ALL filters are returned
-- Example: `{"language": "python", "level": "beginner"}`
-
-#### Usage Examples
-
-**Before Phase 4 (still works):**
-```python
-# Basic search without filters
-results = await client.call_tool("search", {
-    "database": "mydb",
-    "query": "Python programming",
-    "limit": 5
-})
-```
-
-**After Phase 4 (with quality controls):**
-```python
-# Filter by minimum score
-results = await client.call_tool("search", {
-    "database": "mydb",
-    "query": "Python programming",
-    "limit": 10,
-    "min_score": 0.8  # Only high-quality matches
-})
-
-# Filter by metadata
-results = await client.call_tool("search", {
-    "database": "mydb",
-    "query": "programming tutorial",
-    "limit": 10,
-    "metadata_filters": {
-        "language": "python",
-        "level": "beginner"
-    }
-})
-
-# Combine both filters
-results = await client.call_tool("search", {
-    "database": "mydb",
-    "query": "advanced techniques",
-    "limit": 10,
-    "min_score": 0.7,
-    "metadata_filters": {
-        "language": "python",
-        "level": "advanced"
-    }
-})
-```
-
-#### How It Works
-
-1. **Score Filtering:** Applied after vector search, removes results with `score` or `similarity` below threshold
-2. **Metadata Filtering:** Checks each result's metadata dictionary against all filter conditions
-3. **Order:** Filters are applied in sequence (score first, then metadata)
-4. **Re-ranking:** Results are re-ranked after filtering to maintain correct rank order
-
-### Phase 5: Improved Citation Format (COMPLETED)
-
-**What Changed:**
-- Added `url` field at top level of search results (previously nested in metadata)
-- Added `source_citation` field with formatted citation string
-- Added `score` field as canonical similarity score (normalized 0-1)
-- Improved result structure for LLM-friendly citation extraction
-
-**Migration Required:** NO - Additive changes only, existing fields remain
-
-**Benefits:**
-- URLs are immediately visible at top level (no need to dig into metadata)
-- Ready-to-use citation strings for LLM responses
-- Consistent score field across all backends
-- Easier for agents to cite sources correctly
-
-#### New Result Format
-
-**Before Phase 5:**
-```json
-{
-  "text": "Python is a programming language...",
-  "metadata": {
-    "url": "https://example.com/python-guide",
-    "doc_name": "Python Guide"
-  },
-  "similarity": 0.85,
-  "rank": 1
-}
-```
-
-**After Phase 5:**
-```json
-{
-  "text": "Python is a programming language...",
-  "url": "https://example.com/python-guide",
-  "source_citation": "Source: Python Guide (https://example.com/python-guide)",
-  "score": 0.85,
-  "metadata": {
-    "doc_name": "Python Guide"
-  },
-  "rank": 1
-}
-```
-
-#### Field Descriptions
-
-- **`url`** (top-level): Direct link to source document, easy to extract
-- **`source_citation`**: Formatted string ready for LLM responses: `"Source: {doc_name} ({url})"`
-- **`score`**: Canonical similarity score (0-1), normalized across backends
-- **`metadata`**: Still contains all metadata, including `doc_name` and other fields
-
-#### Usage in LLM Responses
-
-The new format makes it trivial for LLMs to cite sources:
-
-```python
-# Agent can easily extract and cite sources
-for result in results:
-    print(f"Content: {result['text']}")
-    print(f"Citation: {result['source_citation']}")
-    print(f"Direct link: {result['url']}")
-    print(f"Relevance: {result['score']:.2f}")
-```
-
-Example LLM response:
-```
-Python is a high-level programming language known for its simplicity and readability.
-
-Source: Python Guide (https://example.com/python-guide)
-```
-
-#### Backward Compatibility
-
-- All existing fields remain unchanged
-- `url` is still in metadata (for backward compatibility)
-- `similarity` field still present alongside `score`
-- Old code continues to work without modification
-### Phase 6: Enhanced Error Messages (COMPLETED)
-
-**Status**: COMPLETE
-**Date**: 2025-01-11
-
-**What Changed:**
-- Created centralized error message module with actionable guidance
-- Enhanced error handling in all tool functions
-- Improved tool documentation with prerequisites and common errors
-- Added parameter validation with helpful error messages
-
-**Migration Required:** NO - Backward compatible improvement
-
-**Benefits:**
-- LLM agents get actionable error messages with recovery steps
-- Clear guidance on what went wrong and how to fix it
-- Better parameter validation catches errors early
-- Improved tool documentation helps agents understand requirements
-
-#### New Error Message Format
-
-**Before Phase 6:**
-```
-Error: Database 'mydb' not found
-```
-
-**After Phase 6:**
-```
-Database 'mydb' not found.
-
-Available databases: 'docs', 'knowledge', 'support'
-
-To create a new database:
-1. Register: register_database(database="mydb", database_type="milvus", collection="default")
-2. Initialize: setup_database(database="mydb", embedding="default")
-3. Create collection: create_collection(database="mydb", collection="default")
-```
-
-#### Error Types Covered
-
-1. **Database Not Found** - Lists available databases and shows creation steps
-2. **Collection Not Found** - Lists available collections and shows creation command
-3. **Collection Already Exists** - Suggests using existing or deleting first
-4. **Database Already Exists** - Suggests using existing or cleanup
-5. **Invalid Embedding** - Lists supported embeddings with descriptions
-6. **Invalid Database Type** - Shows supported types (milvus, weaviate)
-7. **Document Not Found** - Suggests listing documents or writing new one
-8. **Invalid Parameters** - Clear validation messages for limit, min_score, etc.
-9. **Operation Timeout** - Troubleshooting steps for timeouts
-10. **Generic Failures** - Contextual error with troubleshooting guidance
-
-#### Enhanced Tool Documentation
-
-All tool functions now include:
-- **Prerequisites**: What must be done before calling this tool
-- **Next steps**: What to do after successful execution
-- **Common errors**: Typical failure scenarios and solutions
-- **Parameter descriptions**: Clear explanation of each parameter
-
-Example from `create_collection`:
-```python
-"""
-Create a new collection in a vector database.
-
-Creates a collection with specified embedding model and optional chunking configuration.
-All documents in the collection will use this embedding model.
-
-Prerequisites:
-1. Database registered: register_database(database="name", database_type="milvus")
-2. Connection initialized: setup_database(database="name", embedding="default")
-
-Next steps:
-- Write documents: write_documents(database="name", documents=[...])
-
-Common errors:
-- Database not found: Register and initialize it first
-- Collection already exists: Use delete_collection() to remove it first
-- Invalid embedding: Use get_supported_embeddings() to see options
-- Database not initialized: Call setup_database() first
-"""
-```
-
-#### Implementation Details
-
-**New Module**: `src/maestro_mcp/error_messages.py`
-- Centralized error message templates
-- Consistent formatting across all errors
-- Actionable guidance for recovery
-
-**Updated Functions**:
-- `register_database` - Database type validation, existence checks
-- `setup_database` - Database validation, embedding error detection
-- `create_collection` - Comprehensive error handling with specific guidance
-- `query` - Parameter validation, collection existence checks
-- `search` - Parameter validation, result filtering, helpful suggestions
-- `delete_document_from_collection` - Clear error messages for missing resources
-
-**Parameter Validation**:
-- `limit`: Must be 1-100
-- `min_score`: Must be 0.0-1.0
-- `database_type`: Must be 'milvus' or 'weaviate'
-- `embedding`: Validated against supported models
-
-#### Backward Compatibility
-
-- All existing code continues to work
-- Error messages are more helpful but don't change API
-- No breaking changes to function signatures
-- Additive improvement only
-
----
-
-
-
-**Scenario 1: Fixed Chunking with Overlap**
-```python
-# Chunking config
-{
-    "strategy": "Fixed",
-    "chunk_size": 512,
-    "overlap": 50  # 50 character overlap
-}
-
-# Before Phase 3: Duplicated 50 characters between each chunk
-# After Phase 3: Clean reassembly with no duplication
-```
-
-**Scenario 2: Sentence Chunking**
-```python
-# Sentence chunking may create natural overlaps
-# Phase 3 handles these correctly regardless of overlap size
-```
-
-**Scenario 3: Missing Metadata**
-```python
-# If offset metadata is missing (legacy data)
-# Falls back to text-based overlap detection
-# Still produces correct results
-```
-
-#### No Action Required
-
-This is a **transparent improvement**. Your existing code will automatically benefit from the fix:
-
-```python
-# Your existing code works unchanged
-doc = await db.get_document("my_document")
-# Now returns correctly reassembled text without duplication
-```
-
-
-    "documents": [...]  # Uses collection's embedding model
-})
-```
-
-#### Examples
-
-**Create Database:**
-```python
-# Before
-{"input": {"db_name": "mydb", "db_type": "milvus", "collection_name": "docs"}}
-
-# After
-{"database": "mydb", "database_type": "milvus", "collection": "docs"}
-```
-
-**Write Documents:**
-```python
-# Before
-{"input": {"db_name": "mydb", "documents": [...]}}
-
-# After
-{"database": "mydb", "documents": [...]}
-```
-
-**Query:**
-```python
-# Before
-{"input": {"db_name": "mydb", "query": "search term", "limit": 5, "collection_name": "docs"}}
-
-# After
-{"database": "mydb", "query": "search term", "limit": 5, "collection": "docs"}
-```
-
-**Delete Document from Collection:**
-```python
-# Before
-{"input": {"db_name": "mydb", "collection_name": "docs", "doc_name": "mydoc"}}
-
-# After
-{"database": "mydb", "collection": "docs", "document_name": "mydoc"}
-```
-
-## Complete Tool Reference
-
-### Database Management Tools
-
-#### register_database (formerly create_vector_database_tool)
-**⚠️ RENAMED in Phase 2.6**
-```python
-# New format
-{
-    "database": str,              # Required: Database name
-    "database_type": str,         # Required: "milvus" or "weaviate"
-    "collection": str             # Optional: Default "MaestroDocs"
-}
-```
-
-**Migration Note:** The tool `create_vector_database_tool` has been renamed to `register_database` for clarity. This tool creates an in-memory registry entry. After registration, you must call `setup_database()` to initialize the connection, then `create_collection()` to create collections.
-
-#### setup_database
-**⚠️ BEHAVIOR CHANGED in Phase 2.6**
-```python
-{
-    "database": str,              # Required: Database name
-    "embedding": str              # Optional: Default "default"
-}
-```
-
-**Migration Note:** `setup_database` now ONLY initializes the database connection. It no longer creates collections. You must explicitly call `create_collection()` after setup.
-
-#### get_database_info
-```python
-{
-    "database": str               # Required: Database name
-}
-```
-
-#### list_databases
-```python
-{}  # No parameters
-```
-
-#### cleanup
-```python
-{
-    "database": str               # Required: Database name
-}
-```
-
-### Collection Management Tools
-
-#### create_collection
-```python
-{
-    "database": str,              # Required: Database name
-    "collection": str,            # Required: Collection name
-    "embedding": str,             # Optional: Default "default"
-    "chunking_config": dict       # Optional: Chunking configuration
-}
-```
-
-#### list_collections
-```python
-{
-    "database": str               # Required: Database name
-}
-```
-
-#### get_collection_info
-```python
-{
-    "database": str,              # Required: Database name
-    "collection": str             # Optional: Default collection if not provided
-}
-```
-
-#### delete_collection
-```python
-{
-    "database": str,              # Required: Database name
-    "collection": str             # Optional: Collection to delete
-}
-```
-
-### Document Operations
-
-#### write_documents
-```python
-{
-    "database": str,              # Required: Database name
-    "documents": list[dict]       # Required: List of documents
-    # Note: Uses embedding model configured during collection creation
-}
-```
-
-#### write_document
-```python
-{
-    "database": str,              # Required: Database name
-    "url": str,                   # Required: Document URL
-    "text": str,                  # Required: Document text
-    "metadata": dict,             # Optional: Additional metadata
-    "vector": list[float]         # Optional: Pre-computed vector
-    # Note: Uses embedding model configured during collection creation
-}
-```
-
-#### write_document_to_collection
-```python
-{
-    "database": str,              # Required: Database name
-    "collection": str,            # Required: Collection name
-    "document_name": str,         # Required: Document name
-    "text": str,                  # Required: Document text
-    "url": str,                   # Required: Document URL
-    "metadata": dict,             # Optional: Additional metadata
-    "vector": list[float]         # Optional: Pre-computed vector
-    # Note: Uses embedding model configured during collection creation
-}
-```
-
-#### list_documents
-```python
-{
-    "database": str,              # Required: Database name
-    "limit": int,                 # Optional: Default 10
-    "offset": int                 # Optional: Default 0
-}
-```
-
-#### list_documents_in_collection
-```python
-{
-    "database": str,              # Required: Database name
-    "collection": str,            # Required: Collection name
-    "limit": int,                 # Optional: Default 10
-    "offset": int                 # Optional: Default 0
-}
-```
-
-#### count_documents
-```python
-{
-    "database": str               # Required: Database name
-}
-```
-
-#### get_document
-```python
-{
-    "database": str,              # Required: Database name
-    "collection": str,            # Required: Collection name
-    "document_name": str          # Required: Document name
-}
-```
-
-#### delete_document
-```python
-{
-    "database": str,              # Required: Database name
-    "document_id": str            # Required: Document ID
-}
-```
-
-#### delete_documents
-```python
-{
-    "database": str,              # Required: Database name
-    "document_ids": list[str]     # Required: List of document IDs
-}
-```
-
-#### delete_document_from_collection
-```python
-{
-    "database": str,              # Required: Database name
-    "collection": str,            # Required: Collection name
-    "document_name": str          # Required: Document name
-}
-```
-
-### Query and Search Tools
-
-#### query
-```python
-{
-    "database": str,              # Required: Database name
-    "query": str,                 # Required: Query string
-    "limit": int,                 # Optional: Default 5
-    "collection": str             # Optional: Specific collection
-}
-```
-
-#### search
-```python
-{
-    "database": str,              # Required: Database name
-    "query": str,                 # Required: Query string
-    "limit": int,                 # Optional: Default 5
-    "collection": str             # Optional: Specific collection
-}
-```
-
-### Utility Tools
-
-#### get_supported_embeddings
-```python
-{
-    "database": str               # Required: Database name
-}
-```
-
-#### get_supported_chunking_strategies
-```python
-{}  # No parameters
-```
-
-#### resync_databases_tool
-```python
-{}  # No parameters
-```
-
-## Migration Checklist
-
-### For Application Developers
-
-- [ ] Update all tool calls to remove `"input"` wrapper
-- [ ] Rename all parameters according to the mapping table
-- [ ] Update any hardcoded parameter names in your code
-- [ ] Test all database operations
-- [ ] Test all collection operations
-- [ ] Test all document operations
-- [ ] Test query and search functionality
-- [ ] Update your documentation
-- [ ] Update your tests
-
-### For LLM Agent Developers
-
-- [ ] Update tool schemas in your agent configuration
-- [ ] Remove any code that adds `"input"` wrapper
-- [ ] Update parameter name mappings
-- [ ] Test agent interactions with all tools
-- [ ] Update agent prompts if they reference old parameter names
-
-## Common Migration Patterns
-
-### Pattern 1: Simple Database Operation
-```python
-# Before
-params = {"input": {"db_name": db_name}}
-
-# After
-params = {"database": db_name}
-```
-
-### Pattern 2: Collection Operation
-```python
-# Before
-params = {
-    "input": {
-        "db_name": db_name,
-        "collection_name": coll_name
-    }
-}
-
-# After
-params = {
-    "database": db_name,
-    "collection": coll_name
-}
-```
-
-### Pattern 3: Document Operation
-```python
-# Before
-params = {
-    "input": {
-        "db_name": db_name,
-        "collection_name": coll_name,
-        "doc_name": doc_name
-    }
-}
-
-# After
-params = {
-    "database": db_name,
-    "collection": coll_name,
-    "document_name": doc_name
-}
-```
-
-### Pattern 4: Query with Optional Collection
-```python
-# Before
-params = {
-    "input": {
-        "db_name": db_name,
-        "query": query_text,
-        "limit": 10,
-        "collection_name": coll_name  # Optional
-    }
-}
-
-# After
-params = {
-    "database": db_name,
-    "query": query_text,
-    "limit": 10,
-    "collection": coll_name  # Optional
-}
-```
-
-## Automated Migration Script
-
-For large codebases, consider using this Python script to help with migration:
-
-```python
-import re
-import json
-
-def migrate_tool_call(old_call: dict) -> dict:
-    """Migrate a tool call from old to new format."""
-    if "input" not in old_call:
-        return old_call  # Already migrated
-    
-    # Extract parameters from input wrapper
-    params = old_call["input"]
-    
-    # Rename parameters
-    param_mapping = {
-        "db_name": "database",
-        "db_type": "database_type",
-        "collection_name": "collection",
-        "doc_name": "document_name"
-    }
-    
-    new_params = {}
-    for old_key, value in params.items():
-        new_key = param_mapping.get(old_key, old_key)
-        new_params[new_key] = value
-    
-    return new_params
-
-# Example usage
-old_call = {
-    "input": {
-        "db_name": "mydb",
-        "collection_name": "docs",
-        "query": "search term"
-    }
-}
-
-new_call = migrate_tool_call(old_call)
-print(json.dumps(new_call, indent=2))
-```
-
-## Phase 9: LLM Usability Refactoring (IN PROGRESS)
-
-**Status:** Core implementation complete, test and documentation updates in progress
-
-**What Changed:**
-- Tool consolidation: 22 tools → 14 tools
-- All tools now return standardized JSON responses
-- Removed default collection behavior
-- Added safety features (force parameter for destructive operations)
-- Parameter naming consistency improvements
-- Enhanced embedding information in responses
-- Automatic database synchronization at startup
-
-**Migration Required:** YES - Response parsing and parameter updates needed
-
-### Phase 9.1: Tool Consolidation (COMPLETED)
-
-**Merged Tools:**
-- `get_supported_embeddings` + `get_supported_chunking_strategies` → Merged into `get_database_info`
-- `list_documents` → Removed (use `search` with `query="*"`)
-
-**Removed Tools:**
-- `list_documents` - Use `search(database="mydb", collection="docs", query="*")` instead
-- `get_supported_embeddings` - Now part of `get_database_info` response
-- `get_supported_chunking_strategies` - Now part of `get_database_info` response
-
-**Tool Count:** 22 → 14 tools
-
-### Phase 9.2: Remove Default Collection (COMPLETED)
-
-**What Changed:**
-- Removed implicit "default" collection behavior
-- All operations now require explicit `collection` parameter
-- `write_documents` now requires `collection` parameter
+**What Changed:** All MCP tools now return structured JSON instead of plain text.
 
 **Before:**
 ```python
-# Old: Used implicit default collection
-await write_documents(
-    database="mydb",
-    documents=[...]
-)
+result = await client.call_tool("create_database", {...})
+print(result)  # "Database 'mydb' created successfully"
 ```
 
 **After:**
 ```python
-# New: Explicit collection required
-await write_documents(
-    database="mydb",
-    collection="docs",  # Now required
-    documents=[...]
-)
+import json
+
+result = await client.call_tool("create_database", {...})
+response = json.loads(result)
+
+if response["status"] == "success":
+    print(f"Database: {response['data']['database']}")
+    print(f"Type: {response['data']['database_type']}")
+else:
+    print(f"Error: {response['error_code']}")
+    print(f"Suggestion: {response['suggestion']}")
 ```
 
-### Phase 9.3: JSON Response Format (COMPLETED)
-
-**What Changed:**
-- All 14 MCP tools now return structured JSON instead of plain text
-- Standardized response format with status, message, data, and metadata
-- Error responses include error codes and actionable suggestions
-
-**Migration Required:** YES - All response parsing must be updated
-
-**Success Response Format:**
+**Response Format:**
 ```json
 {
   "status": "success",
@@ -1119,160 +54,270 @@ await write_documents(
   },
   "metadata": {
     "timestamp": "2025-01-13T12:00:00Z",
-    "operation": "tool_name",
-    "database": "mydb",
-    "collection": "docs"
-  }
-}
-```
-
-**Error Response Format:**
-```json
-{
-  "status": "error",
-  "message": "Human-readable error description",
-  "error_code": "DB_NOT_FOUND",
-  "suggestion": "Use list_databases to see available databases",
-  "metadata": {
-    "timestamp": "2025-01-13T12:00:00Z",
     "operation": "tool_name"
   }
 }
 ```
 
-**Before (Plain Text):**
-```python
-result = await create_database(database="mydb", database_type="milvus")
-print(result)  # "Database 'mydb' created successfully"
+**Error Format:**
+```json
+{
+  "status": "error",
+  "message": "Error description",
+  "error_code": "DB_NOT_FOUND",
+  "suggestion": "Use list_databases to see available databases"
+}
 ```
 
-**After (JSON):**
-```python
-import json
+### 2. Explicit Collection Parameter
 
-result = await create_database(database="mydb", database_type="milvus")
-response = json.loads(result)
-
-if response["status"] == "success":
-    print(f"Success: {response['message']}")
-    print(f"Database: {response['data']['database']}")
-    print(f"Type: {response['data']['database_type']}")
-else:
-    print(f"Error: {response['error_code']} - {response['message']}")
-    print(f"Suggestion: {response['suggestion']}")
-```
-
-**Error Codes:**
-- `DB_*` - Database errors (DB_NOT_FOUND, DB_ALREADY_EXISTS, DB_CONNECTION_ERROR)
-- `COLL_*` - Collection errors (COLL_NOT_FOUND, COLL_ALREADY_EXISTS)
-- `DOC_*` - Document errors (DOC_NOT_FOUND, DOC_WRITE_ERROR)
-- `PARAM_*` - Parameter errors (PARAM_INVALID, PARAM_MISSING)
-- `CONFIG_*` - Configuration errors (CONFIG_INVALID, CONFIG_MISSING)
-
-### Phase 9.4: Parameter Consistency (COMPLETED)
-
-**What Changed:**
-- Standardized parameter naming across all tools
-- Consistent use of `database`, `collection`, `document_name`
-
-**Parameter Renames:**
-- `db_name` → `database` (everywhere)
-- `collection_name` → `collection` (everywhere)
-- `doc_name` → `document_name` (everywhere)
-- `db_type` → `database_type` (create_database only)
-
-### Phase 9.5: Safety Features (COMPLETED)
-
-**What Changed:**
-- Destructive operations now require explicit `force=True` parameter
-- Prevents accidental data loss
-- Clear error messages when force parameter is missing
-
-**Affected Operations:**
-- `delete_database(database="mydb", force=True)`
-- `delete_collection(database="mydb", collection="docs", force=True)`
-- `delete_documents(database="mydb", collection="docs", document_ids=[...], force=True)`
+**What Changed:** The `write_documents` tool now requires an explicit `collection` parameter.
 
 **Before:**
 ```python
-# Old: No safety check
-await delete_database(database="mydb")
+await client.call_tool("write_documents", {
+    "database": "mydb",
+    "documents": [...]
+})  # Used implicit default collection
 ```
 
 **After:**
 ```python
-# New: Requires explicit confirmation
-await delete_database(database="mydb", force=True)
-
-# Without force parameter:
-# Error: "PARAM_MISSING: force parameter required for destructive operations"
-```
-
-### Phase 9.6: Enhanced Embedding Info (COMPLETED)
-
-**What Changed:**
-- `get_database_info` now includes detailed embedding configuration
-- Shows embedding model, vector size, and chunking strategy
-- Includes supported embeddings and chunking strategies
-
-**Response Example:**
-```json
-{
-  "status": "success",
-  "data": {
+await client.call_tool("write_documents", {
     "database": "mydb",
-    "database_type": "milvus",
-    "collections": ["docs", "articles"],
-    "embedding": {
-      "model": "nomic-embed-text",
-      "vector_size": 768,
-      "provider": "custom_local"
-    },
-    "chunking": {
-      "strategy": "Sentence",
-      "chunk_size": 512
-    },
-    "supported_embeddings": ["text-embedding-ada-002", "custom_local"],
-    "supported_chunking": ["None", "Fixed", "Sentence", "Semantic"]
-  }
-}
+    "collection": "docs",  # Now required
+    "documents": [...]
+})
 ```
 
-### Phase 9.7: Database Sync at Startup (COMPLETED)
+### 3. Safety Confirmations
 
-**What Changed:**
-- MCP server automatically syncs with existing Milvus databases on startup
-- No manual `refresh_databases` call needed after server restart
-- Databases are discovered and registered automatically
+**What Changed:** Destructive operations require explicit `force=True` parameter.
 
-**Benefits:**
-- Seamless server restarts
-- No data loss or manual intervention required
-- Automatic reconnection to existing databases
+**Affected Operations:**
+- `delete_database`
+- `delete_collection`
+- `delete_documents`
 
-## Troubleshooting
+**Example:**
+```python
+# This will fail with error
+await client.call_tool("delete_database", {
+    "database": "mydb"
+})
 
-### Error: "input" parameter not found
-**Cause:** You're still using the old nested format
-**Solution:** Remove the `"input"` wrapper and place parameters at the top level
+# This will succeed
+await client.call_tool("delete_database", {
+    "database": "mydb",
+    "force": True
+})
+```
 
-### Error: Unknown parameter "db_name"
-**Cause:** Using old parameter names  
-**Solution:** Rename to new parameter names (e.g., `db_name` → `database`)
+### 4. Parameter Names
 
-### Error: Tool schema validation failed
-**Cause:** Mismatch between expected and provided parameters  
-**Solution:** Check the tool reference section for correct parameter names
+**What Changed:** Standardized parameter naming for consistency.
+
+| Old Name | New Name |
+|----------|----------|
+| `db_name` | `database` |
+| `db_type` | `database_type` |
+| `collection_name` | `collection` |
+| `doc_name` | `document_name` |
+
+### 5. Tool Consolidation
+
+**What Changed:** Reduced tool count by merging related functionality.
+
+**Removed Tools:**
+- `list_documents` → Use `search(query="*")` instead
+- `get_supported_embeddings` → Now part of `get_database_info`
+- `get_supported_chunking_strategies` → Now part of `get_database_info`
+
+**Example:**
+```python
+# Before: Separate tools
+embeddings = await client.call_tool("get_supported_embeddings", {...})
+chunking = await client.call_tool("get_supported_chunking_strategies", {...})
+
+# After: Single tool
+info = await client.call_tool("get_database_info", {"database": "mydb"})
+response = json.loads(info)
+embeddings = response["data"]["supported_embeddings"]
+chunking = response["data"]["supported_chunking"]
+```
+
+## Current API Reference
+
+### Available Tools (14 total)
+
+**Database Management (5 tools):**
+- `create_database` - Create a new database
+- `delete_database` - Delete a database (requires force=True)
+- `get_database_info` - Get database details including supported embeddings/chunking
+- `list_databases` - List all databases
+- `refresh_databases` - Sync with backend databases
+
+**Collection Management (4 tools):**
+- `create_collection` - Create a new collection
+- `delete_collection` - Delete a collection (requires force=True)
+- `get_collection_info` - Get collection details
+- `list_collections` - List collections in a database
+
+**Document Operations (3 tools):**
+- `write_documents` - Write documents to a collection
+- `delete_documents` - Delete documents (requires force=True)
+- `get_document` - Retrieve a document
+
+**Query Operations (2 tools):**
+- `query` - Natural language query with text summary
+- `search` - Vector search with structured results
+
+### Common Workflows
+
+#### Creating a Database and Adding Documents
+
+```python
+import json
+
+# 1. Create database
+result = await client.call_tool("create_database", {
+    "database": "mydb",
+    "database_type": "milvus"
+})
+response = json.loads(result)
+print(f"Created: {response['data']['database']}")
+
+# 2. Create collection
+result = await client.call_tool("create_collection", {
+    "database": "mydb",
+    "collection": "docs",
+    "embedding": "text-embedding-ada-002"
+})
+
+# 3. Write documents
+result = await client.call_tool("write_documents", {
+    "database": "mydb",
+    "collection": "docs",
+    "documents": [
+        {
+            "url": "https://example.com/doc1.html",
+            "metadata": {"author": "Alice"}
+        },
+        {
+            "text": "Direct text content",
+            "metadata": {"author": "Bob"}
+        }
+    ]
+})
+response = json.loads(result)
+print(f"Wrote {response['data']['documents_written']} documents")
+```
+
+#### Searching Documents
+
+```python
+# Search with filters
+result = await client.call_tool("search", {
+    "database": "mydb",
+    "collection": "docs",
+    "query": "machine learning",
+    "limit": 10,
+    "min_score": 0.8,
+    "metadata_filters": {"author": "Alice"}
+})
+
+response = json.loads(result)
+for doc in response["data"]["results"]:
+    print(f"Score: {doc['score']}")
+    print(f"Text: {doc['text']}")
+    print(f"Citation: {doc['source_citation']}")
+```
+
+#### Deleting Resources
+
+```python
+# Delete documents (requires force)
+result = await client.call_tool("delete_documents", {
+    "database": "mydb",
+    "collection": "docs",
+    "document_ids": ["doc1", "doc2"],
+    "force": True
+})
+
+# Delete collection (requires force)
+result = await client.call_tool("delete_collection", {
+    "database": "mydb",
+    "collection": "docs",
+    "force": True
+})
+
+# Delete database (requires force)
+result = await client.call_tool("delete_database", {
+    "database": "mydb",
+    "force": True
+})
+```
+
+## Error Codes
+
+All errors include an `error_code` field for programmatic handling:
+
+**Database Errors:**
+- `DB_NOT_FOUND` - Database doesn't exist
+- `DB_ALREADY_EXISTS` - Database name already in use
+- `DB_CONNECTION_ERROR` - Cannot connect to database backend
+
+**Collection Errors:**
+- `COLL_NOT_FOUND` - Collection doesn't exist
+- `COLL_ALREADY_EXISTS` - Collection name already in use
+
+**Document Errors:**
+- `DOC_NOT_FOUND` - Document doesn't exist
+- `DOC_WRITE_ERROR` - Failed to write document
+
+**Parameter Errors:**
+- `PARAM_INVALID` - Invalid parameter value
+- `PARAM_MISSING` - Required parameter not provided
+
+**Configuration Errors:**
+- `CONFIG_INVALID` - Invalid configuration
+- `CONFIG_MISSING` - Required configuration not found
+
+## Migration Checklist
+
+- [ ] Update all tool calls to parse JSON responses
+- [ ] Add `collection` parameter to `write_documents` calls
+- [ ] Add `force=True` to all delete operations
+- [ ] Update parameter names (`db_name` → `database`, etc.)
+- [ ] Replace `list_documents` with `search(query="*")`
+- [ ] Update error handling to check `error_code` field
+- [ ] Test all integrations with new response format
+
+## Benefits
+
+**For Developers:**
+- Structured responses are easier to parse and validate
+- Error codes enable robust error handling
+- Explicit parameters prevent accidental operations
+- Consistent naming reduces cognitive load
+
+**For AI Agents:**
+- JSON format is natively parseable
+- Clear error messages with suggestions
+- No implicit behavior to learn
+- Predictable API surface
 
 ## Support
 
-For questions or issues with migration:
-- Check the [REFACTORING_PLAN.md](REFACTORING_PLAN.md) for detailed phase information
-- Review [PHASE1_IMPLEMENTATION_PLAN.md](PHASE1_IMPLEMENTATION_PLAN.md) for implementation details
-- See [PHASE1_REFACTORING_GUIDE.md](PHASE1_REFACTORING_GUIDE.md) for code examples
+For questions or issues:
+- Check [README.md](../README.md) for quick start guide
+- Review [DESIGN_PRINCIPLES.md](DESIGN_PRINCIPLES.md) for API design rationale
+- See [TESTING_GUIDE.md](TESTING_GUIDE.md) for testing guidelines
+- Refer to [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines
 
-## Version Compatibility
+## Future Features
 
-- **Old Format:** Deprecated as of Phase 1 completion
-- **New Format:** Required for all new integrations
-- **Transition Period:** None - breaking change requires immediate migration
+Planned enhancements (not yet implemented):
+- Ownership metadata for documents
+- Access control and permissions
+- See [FEATURES_ACCESS_CONTROL.md](FEATURES_ACCESS_CONTROL.md) for details
