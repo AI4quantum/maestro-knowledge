@@ -20,6 +20,26 @@ A modular vector database interface supporting multiple backends (Weaviate, Milv
 - **Environment variable substitution**: Dynamic configuration with `{{ENV_VAR_NAME}}` syntax
 - **Safety features**: Confirmation prompts for destructive operations with `--force` flag bypass
 
+## Recent Updates (Phase 9)
+
+**Phase 9: LLM Usability Refactoring** - Major improvements for AI agent integration:
+
+- **Tool Consolidation (9.1)**: Reduced from 22 to 14 MCP tools for simpler API
+- **No Default Collections (9.2)**: Explicit collection parameter required for clarity
+- **JSON Response Format (9.3)**: All tools return structured JSON with status, message, data, and metadata
+- **Parameter Consistency (9.4)**: Standardized naming (`database`, `collection`, `document_name`)
+- **Safety Features (9.5)**: Destructive operations require `force=True` parameter
+- **Enhanced Embedding Info (9.6)**: Better embedding model information in responses
+- **Database Sync (9.7)**: Automatic database synchronization at server startup
+
+**Breaking Changes:**
+- All MCP tools now return JSON instead of plain text
+- `write_documents` requires explicit `collection` parameter
+- Destructive operations require `force=True` (delete_database, delete_collection, delete_documents)
+- Parameter names updated: `db_name` → `database`, `collection_name` → `collection`, `doc_name` → `document_name`
+
+See [MIGRATION_GUIDE.md](docs/MIGRATION_GUIDE.md) for complete migration details.
+
 ## Chunking Strategies
 
 Maestro Knowledge supports multiple document chunking strategies to optimize how your documents are split for vector search:
@@ -376,18 +396,27 @@ Maestro Knowledge supports automatic document fetching and conversion from URLs.
 
 ### Usage via MCP Tool
 
-```json
-{
-  "tool": "write_documents",
-  "input": {
-    "db_name": "my_collection",
+```python
+import json
+
+# Write documents with automatic fetching
+result = await client.call_tool("write_documents", {
+    "database": "my_database",
+    "collection": "my_collection",
     "documents": [
-      {"url": "https://example.com/article.html"},
-      {"url": "https://example.com/paper.pdf"},
-      {"url": "https://example.com/guide.md"}
+        {"url": "https://example.com/article.html"},
+        {"url": "https://example.com/paper.pdf"},
+        {"url": "https://example.com/guide.md"}
     ]
-  }
-}
+})
+
+# Parse JSON response
+response = json.loads(result)
+if response["status"] == "success":
+    print(f"Wrote {response['data']['documents_written']} documents")
+    print(f"Total chunks: {response['data']['total_chunks']}")
+else:
+    print(f"Error: {response['error_code']} - {response['message']}")
 ```
 
 ### Usage via CLI
@@ -402,17 +431,15 @@ maestro write-documents --db-name my_collection \
 
 You can still provide text directly (no URL fetching):
 
-```json
-{
-  "tool": "write_documents",
-  "input": {
-    "db_name": "my_collection",
+```python
+result = await client.call_tool("write_documents", {
+    "database": "my_database",
+    "collection": "my_collection",
     "documents": [
-      {"url": "doc1", "text": "Direct text content"},
-      {"url": "https://example.com/doc.pdf"}
+        {"url": "doc1", "text": "Direct text content"},
+        {"url": "https://example.com/doc.pdf"}
     ]
-  }
-}
+})
 ```
 
 ### Important Notes

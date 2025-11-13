@@ -89,9 +89,10 @@ async def main() -> None:
         print(f"  - {url}: {'Direct text' if has_text else 'Will fetch and convert'}")
 
     # Write documents (system handles fetching and conversion automatically)
+    # Note: No embedding parameter - uses collection's embedding model (Phase 2)
     print("\n4. Writing documents to database...")
     try:
-        result = await db.write_documents(documents, embedding="default")
+        result = await db.write_documents(documents)
         print(f"✓ Successfully wrote documents")
         print(f"  Stats: {result}")
     except Exception as e:

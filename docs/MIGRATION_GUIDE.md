@@ -21,8 +21,9 @@
 | Phase 7 | ✅ COMPLETE | Update test suite | NO |
 | Phase 8 | ✅ COMPLETE | Update documentation | NO |
 | Phase 8.5 | ✅ COMPLETE | LLM usability improvements | NO - Backward compatible |
-| Phase 9 | 📋 PLANNED | Add ownership metadata | NO |
-| Phase 10 | 📋 PLANNED | Implement access control | NO |
+| Phase 9 | 🔄 IN PROGRESS | LLM Usability Refactoring | YES - JSON responses, parameters |
+| Phase 10 | � PLANNED | Add ownership metadata | NO |
+| Phase 11 | 📋 PLANNED | Implement access control | NO |
 
 ## Current API Reference (Post-Phase 8.5)
 
@@ -1045,10 +1046,214 @@ new_call = migrate_tool_call(old_call)
 print(json.dumps(new_call, indent=2))
 ```
 
+## Phase 9: LLM Usability Refactoring (IN PROGRESS)
+
+**Status:** Core implementation complete, test and documentation updates in progress
+
+**What Changed:**
+- Tool consolidation: 22 tools → 14 tools
+- All tools now return standardized JSON responses
+- Removed default collection behavior
+- Added safety features (force parameter for destructive operations)
+- Parameter naming consistency improvements
+- Enhanced embedding information in responses
+- Automatic database synchronization at startup
+
+**Migration Required:** YES - Response parsing and parameter updates needed
+
+### Phase 9.1: Tool Consolidation (COMPLETED)
+
+**Merged Tools:**
+- `get_supported_embeddings` + `get_supported_chunking_strategies` → Merged into `get_database_info`
+- `list_documents` → Removed (use `search` with `query="*"`)
+
+**Removed Tools:**
+- `list_documents` - Use `search(database="mydb", collection="docs", query="*")` instead
+- `get_supported_embeddings` - Now part of `get_database_info` response
+- `get_supported_chunking_strategies` - Now part of `get_database_info` response
+
+**Tool Count:** 22 → 14 tools
+
+### Phase 9.2: Remove Default Collection (COMPLETED)
+
+**What Changed:**
+- Removed implicit "default" collection behavior
+- All operations now require explicit `collection` parameter
+- `write_documents` now requires `collection` parameter
+
+**Before:**
+```python
+# Old: Used implicit default collection
+await write_documents(
+    database="mydb",
+    documents=[...]
+)
+```
+
+**After:**
+```python
+# New: Explicit collection required
+await write_documents(
+    database="mydb",
+    collection="docs",  # Now required
+    documents=[...]
+)
+```
+
+### Phase 9.3: JSON Response Format (COMPLETED)
+
+**What Changed:**
+- All 14 MCP tools now return structured JSON instead of plain text
+- Standardized response format with status, message, data, and metadata
+- Error responses include error codes and actionable suggestions
+
+**Migration Required:** YES - All response parsing must be updated
+
+**Success Response Format:**
+```json
+{
+  "status": "success",
+  "message": "Human-readable summary",
+  "data": {
+    // Tool-specific data
+  },
+  "metadata": {
+    "timestamp": "2025-01-13T12:00:00Z",
+    "operation": "tool_name",
+    "database": "mydb",
+    "collection": "docs"
+  }
+}
+```
+
+**Error Response Format:**
+```json
+{
+  "status": "error",
+  "message": "Human-readable error description",
+  "error_code": "DB_NOT_FOUND",
+  "suggestion": "Use list_databases to see available databases",
+  "metadata": {
+    "timestamp": "2025-01-13T12:00:00Z",
+    "operation": "tool_name"
+  }
+}
+```
+
+**Before (Plain Text):**
+```python
+result = await create_database(database="mydb", database_type="milvus")
+print(result)  # "Database 'mydb' created successfully"
+```
+
+**After (JSON):**
+```python
+import json
+
+result = await create_database(database="mydb", database_type="milvus")
+response = json.loads(result)
+
+if response["status"] == "success":
+    print(f"Success: {response['message']}")
+    print(f"Database: {response['data']['database']}")
+    print(f"Type: {response['data']['database_type']}")
+else:
+    print(f"Error: {response['error_code']} - {response['message']}")
+    print(f"Suggestion: {response['suggestion']}")
+```
+
+**Error Codes:**
+- `DB_*` - Database errors (DB_NOT_FOUND, DB_ALREADY_EXISTS, DB_CONNECTION_ERROR)
+- `COLL_*` - Collection errors (COLL_NOT_FOUND, COLL_ALREADY_EXISTS)
+- `DOC_*` - Document errors (DOC_NOT_FOUND, DOC_WRITE_ERROR)
+- `PARAM_*` - Parameter errors (PARAM_INVALID, PARAM_MISSING)
+- `CONFIG_*` - Configuration errors (CONFIG_INVALID, CONFIG_MISSING)
+
+### Phase 9.4: Parameter Consistency (COMPLETED)
+
+**What Changed:**
+- Standardized parameter naming across all tools
+- Consistent use of `database`, `collection`, `document_name`
+
+**Parameter Renames:**
+- `db_name` → `database` (everywhere)
+- `collection_name` → `collection` (everywhere)
+- `doc_name` → `document_name` (everywhere)
+- `db_type` → `database_type` (create_database only)
+
+### Phase 9.5: Safety Features (COMPLETED)
+
+**What Changed:**
+- Destructive operations now require explicit `force=True` parameter
+- Prevents accidental data loss
+- Clear error messages when force parameter is missing
+
+**Affected Operations:**
+- `delete_database(database="mydb", force=True)`
+- `delete_collection(database="mydb", collection="docs", force=True)`
+- `delete_documents(database="mydb", collection="docs", document_ids=[...], force=True)`
+
+**Before:**
+```python
+# Old: No safety check
+await delete_database(database="mydb")
+```
+
+**After:**
+```python
+# New: Requires explicit confirmation
+await delete_database(database="mydb", force=True)
+
+# Without force parameter:
+# Error: "PARAM_MISSING: force parameter required for destructive operations"
+```
+
+### Phase 9.6: Enhanced Embedding Info (COMPLETED)
+
+**What Changed:**
+- `get_database_info` now includes detailed embedding configuration
+- Shows embedding model, vector size, and chunking strategy
+- Includes supported embeddings and chunking strategies
+
+**Response Example:**
+```json
+{
+  "status": "success",
+  "data": {
+    "database": "mydb",
+    "database_type": "milvus",
+    "collections": ["docs", "articles"],
+    "embedding": {
+      "model": "nomic-embed-text",
+      "vector_size": 768,
+      "provider": "custom_local"
+    },
+    "chunking": {
+      "strategy": "Sentence",
+      "chunk_size": 512
+    },
+    "supported_embeddings": ["text-embedding-ada-002", "custom_local"],
+    "supported_chunking": ["None", "Fixed", "Sentence", "Semantic"]
+  }
+}
+```
+
+### Phase 9.7: Database Sync at Startup (COMPLETED)
+
+**What Changed:**
+- MCP server automatically syncs with existing Milvus databases on startup
+- No manual `refresh_databases` call needed after server restart
+- Databases are discovered and registered automatically
+
+**Benefits:**
+- Seamless server restarts
+- No data loss or manual intervention required
+- Automatic reconnection to existing databases
+
 ## Troubleshooting
 
 ### Error: "input" parameter not found
-**Cause:** You're still using the old nested format  
+**Cause:** You're still using the old nested format
 **Solution:** Remove the `"input"` wrapper and place parameters at the top level
 
 ### Error: Unknown parameter "db_name"
