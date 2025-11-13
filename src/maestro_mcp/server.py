@@ -733,19 +733,26 @@ async def create_mcp_server() -> FastMCP:
     @app.tool()
     async def delete_documents(
         database: str = Field(..., description="Name of the vector database instance"),
+        collection: str = Field(
+            ..., description="Name of the collection containing the documents"
+        ),
         document_ids: list[str] = Field(
             ..., description="List of document IDs to delete"
         ),
     ) -> str:
-        """Delete documents from a vector database by their IDs."""
+        """Delete documents from a collection in a vector database by their IDs."""
         db = get_database_by_name(database)
+
+        # Set the collection context
+        db.collection_name = collection
+
         ok, _ = await run_with_timeout(
             db.delete_documents(document_ids), "delete", get_timeout("delete")
         )
         if not ok:
-            return f"Error: Failed to delete documents in vector database '{database}'"
+            return f"Error: Failed to delete documents from collection '{collection}' in database '{database}'"
 
-        return f"Successfully deleted {len(document_ids)} documents from vector database '{database}'"
+        return f"Successfully deleted {len(document_ids)} documents from collection '{collection}' in database '{database}'"
 
     @app.tool()
     async def get_document(
@@ -753,9 +760,11 @@ async def create_mcp_server() -> FastMCP:
         collection: str = Field(
             ..., description="Name of the collection containing the document"
         ),
-        document_name: str = Field(..., description="Name of the document to retrieve"),
+        document_id: str = Field(
+            ..., description="Unique identifier of the document to retrieve"
+        ),
     ) -> str:
-        """Get a specific document by name from a collection in a vector database."""
+        """Get a specific document by ID from a collection in a vector database."""
         db = get_database_by_name(database)
 
         # Check if the collection exists
@@ -775,19 +784,19 @@ async def create_mcp_server() -> FastMCP:
         try:
             # Get the document using the new get_document method
             ok, document_any = await run_with_timeout(
-                db.get_document(document_name, collection),
+                db.get_document(document_id, collection),
                 "get_document",
                 get_timeout("list_documents"),
             )
             if not ok:
                 return str(document_any)
             document: dict[str, Any] = cast("dict[str, Any]", document_any)
-            return f"Document '{document_name}' from collection '{collection}' in vector database '{database}':\n{json.dumps(document, indent=2, default=str)}"
+            return f"Document '{document_id}' from collection '{collection}' in vector database '{database}':\n{json.dumps(document, indent=2, default=str)}"
         except ValueError as e:
             # Re-raise ValueError as is (these are user-friendly error messages)
             raise e
         except Exception as e:
-            raise ValueError(f"Failed to retrieve document '{document_name}': {e}")
+            raise ValueError(f"Failed to retrieve document '{document_id}': {e}")
 
     @app.tool()
     async def delete_collection(

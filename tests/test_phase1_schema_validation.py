@@ -75,6 +75,8 @@ async def test_flat_parameters_in_sample_tools() -> None:
             "create_collection",
             ["database", "collection", "embedding", "chunking_config"],
         ),
+        ("delete_documents", ["database", "collection", "document_ids"]),
+        ("get_document", ["database", "collection", "document_id"]),
     ]
 
     for tool_name, expected_params in tools_to_test:

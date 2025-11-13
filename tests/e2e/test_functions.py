@@ -165,7 +165,12 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
 
     if first_doc_id:
         res = await client.call_tool(
-            "delete_documents", {"database": db_name, "document_ids": [first_doc_id]}
+            "delete_documents",
+            {
+                "database": db_name,
+                "collection": f"{db_name}_Collection",
+                "document_ids": [first_doc_id],
+            },
         )
         if not hasattr(res, "data") and isinstance(res, str):
             assert res, f"delete_documents failed: {res}"
@@ -347,7 +352,12 @@ async def run_document_retrieval_tests(client: Client, backend_name: str) -> Non
         if doc_id:
             # Test get_document
             res = await client.call_tool(
-                "get_document", {"database": db_name, "document_id": doc_id}
+                "get_document",
+                {
+                    "database": db_name,
+                    "collection": f"{db_name}_Collection",
+                    "document_id": doc_id,
+                },
             )
             assert hasattr(res, "data")
 
@@ -408,7 +418,12 @@ async def run_bulk_operations_tests(client: Client, backend_name: str) -> None:
         if doc_ids:
             # Test delete_documents (bulk)
             res = await client.call_tool(
-                "delete_documents", {"database": db_name, "document_ids": doc_ids}
+                "delete_documents",
+                {
+                    "database": db_name,
+                    "collection": f"{db_name}_Collection",
+                    "document_ids": doc_ids,
+                },
             )
             assert hasattr(res, "data")
 
@@ -536,6 +551,7 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
                 "delete_documents",
                 {
                     "database": db_name,
+                    "collection": collection_name,
                     "document_ids": [doc_id],
                 },
             )
