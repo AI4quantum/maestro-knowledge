@@ -67,20 +67,20 @@ async def test_flat_parameters_in_sample_tools() -> None:
 
     server = await create_mcp_server()
 
-    # Test a sample of critical tools
+    # Test a sample of critical tools (Phase 9 - database parameter removed)
     tools_to_test = [
-        ("create_database", ["database", "database_type", "embedding"]),
-        ("query", ["database", "query", "limit", "collection"]),
-        ("search", ["database", "query", "limit", "collection"]),
-        ("write_documents", ["database", "documents", "embedding"]),
+        ("query", ["query", "limit", "collection"]),
+        ("search", ["query", "limit", "collection", "min_score", "metadata_filters"]),
+        ("write_documents", ["collection", "documents"]),
         (
             "create_collection",
-            ["database", "collection", "embedding", "chunking_config"],
+            ["collection", "database", "embedding", "chunking_config"],
         ),
-        ("delete_documents", ["database", "collection", "document_ids", "force"]),
-        ("delete_collection", ["database", "collection", "force"]),
-        ("delete_database", ["database", "force"]),
-        ("get_document", ["database", "collection", "document_id"]),
+        ("delete_documents", ["collection", "document_ids", "force"]),
+        ("delete_collection", ["collection", "force"]),
+        ("get_document", ["collection", "document_id"]),
+        ("get_collection", ["collection", "include_count"]),
+        ("get_config", ["include_embeddings", "include_chunking"]),
     ]
 
     for tool_name, expected_params in tools_to_test:
@@ -126,19 +126,16 @@ async def test_all_tools_accessible() -> None:
     server = await create_mcp_server()
 
     expected_tools = [
-        "create_database",
         "write_documents",
         "delete_documents",
         "get_document",
         "delete_collection",
-        "delete_database",
-        "get_database_info",
+        "get_config",
         "list_collections",
-        "get_collection_info",
+        "get_collection",
         "create_collection",
         "query",
         "search",
-        "list_databases",
         "refresh_databases",
     ]
 

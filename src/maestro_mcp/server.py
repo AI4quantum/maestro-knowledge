@@ -401,9 +401,21 @@ def get_database_by_name(db_name: str) -> VectorDatabase:
     """Get a vector database instance by name."""
     if db_name not in vector_databases:
         raise ValueError(
-            f"Vector database '{db_name}' not found. Please create it first."
+            f"Collection '{db_name}' not found. Please register it first with register_database()."
         )
     return vector_databases[db_name]
+
+
+def get_default_database_name() -> str | None:
+    """Get the default database name (first registered database).
+
+    Returns None if no databases are registered.
+    This is used when database parameter is not provided.
+    """
+    if not vector_databases:
+        return None
+    # Return the first registered database
+    return next(iter(vector_databases.keys()))
 
 
 # Pydantic models for tool inputs
@@ -466,8 +478,10 @@ async def create_mcp_server() -> FastMCP:
             "Ready\n" + json.dumps({"databases": db_list}, indent=2)
         )
 
-    @app.tool()
-    async def create_database(
+    # DISABLED: Confusing terminology - "database" actually means "collection"
+    # Use create_collection() instead for clearer semantics
+    # @app.tool()
+    async def create_database_DISABLED(
         database: str = Field(
             ..., description="Unique name for the vector database instance"
         ),
@@ -617,7 +631,6 @@ async def create_mcp_server() -> FastMCP:
 
     @app.tool()
     async def write_documents(
-        database: str = Field(..., description="Name of the vector database instance"),
         collection: str = Field(
             ..., description="Name of the collection to write documents to"
         ),
@@ -693,6 +706,14 @@ async def create_mcp_server() -> FastMCP:
 
         Note: Embedding model is configured at collection creation time via setup_database or create_collection.
         """
+        # Internal: database defaults to collection name
+        database: str | None = None
+        if database is None:
+            database = collection
+            logger.info(
+                f"Database parameter not provided, defaulting to collection name: {database}"
+            )
+
         db = get_database_by_name(database)
 
         stats: Any = None
@@ -800,7 +821,6 @@ async def create_mcp_server() -> FastMCP:
         )
 
         return documents_written_response(
-            database=database,
             collection=collection_name,
             documents_written=len(documents),
             chunks_created=chunks_created,
@@ -811,7 +831,6 @@ async def create_mcp_server() -> FastMCP:
 
     @app.tool()
     async def delete_documents(
-        database: str = Field(..., description="Name of the vector database instance"),
         collection: str = Field(
             ..., description="Name of the collection containing the documents"
         ),
@@ -828,6 +847,14 @@ async def create_mcp_server() -> FastMCP:
         Safety: By default (force=False), this operation requires explicit confirmation.
         Set force=True to proceed with deletion.
         """
+        # Internal: database defaults to collection name
+        database: str | None = None
+        if database is None:
+            database = collection
+            logger.info(
+                f"Database parameter not provided, defaulting to collection name: {database}"
+            )
+
         db = get_database_by_name(database)
 
         # Set the collection context
@@ -864,7 +891,6 @@ async def create_mcp_server() -> FastMCP:
             )
 
         return documents_deleted_response(
-            database=database,
             collection=collection,
             documents_deleted=len(document_ids),
             forced=True,
@@ -872,7 +898,6 @@ async def create_mcp_server() -> FastMCP:
 
     @app.tool()
     async def get_document(
-        database: str = Field(..., description="Name of the vector database instance"),
         collection: str = Field(
             ..., description="Name of the collection containing the document"
         ),
@@ -881,6 +906,14 @@ async def create_mcp_server() -> FastMCP:
         ),
     ) -> str:
         """Get a specific document by ID from a collection in a vector database."""
+        # Internal: database defaults to collection name
+        database: str | None = None
+        if database is None:
+            database = collection
+            logger.info(
+                f"Database parameter not provided, defaulting to collection name: {database}"
+            )
+
         db = get_database_by_name(database)
 
         # Check if the collection exists
@@ -956,10 +989,7 @@ async def create_mcp_server() -> FastMCP:
 
     @app.tool()
     async def delete_collection(
-        database: str = Field(..., description="Name of the vector database instance"),
-        collection: str | None = Field(
-            default=None, description="Name of the collection to delete"
-        ),
+        collection: str = Field(..., description="Name of the collection to delete"),
         force: bool = Field(
             default=False,
             description="If False, checks if collection is empty before deletion. If True, deletes regardless of contents.",
@@ -971,6 +1001,14 @@ async def create_mcp_server() -> FastMCP:
         If the collection contains documents, it will return an error with statistics.
         Set force=True to delete the collection and all its contents.
         """
+        # Internal: database defaults to collection name
+        database: str | None = None
+        if database is None:
+            database = collection
+            logger.info(
+                f"Database parameter not provided, defaulting to collection name: {database}"
+            )
+
         if database in vector_databases:
             db = get_database_by_name(database)
 
@@ -1044,8 +1082,16 @@ async def create_mcp_server() -> FastMCP:
                     details={"collection": collection, "database": database},
                 )
 
+            # CRITICAL FIX: Remove from in-memory registry after successful deletion
+            # In the current architecture, each "database" entry represents a collection
+            # When we delete the collection from the backend, we must also remove it from memory
+            if database in vector_databases:
+                del vector_databases[database]
+                logger.info(
+                    f"Removed database '{database}' from in-memory registry after collection deletion"
+                )
+
             return collection_deleted_response(
-                database=database,
                 collection=collection,
                 documents_deleted=documents_deleted,
                 forced=force,
@@ -1083,8 +1129,10 @@ async def create_mcp_server() -> FastMCP:
                 details={"collection": collection, "error": str(e)},
             )
 
-    @app.tool()
-    async def delete_database(
+    # DISABLED: Confusing terminology - "database" actually means "collection"
+    # Use delete_collection() instead for clearer semantics
+    # @app.tool()
+    async def delete_database_DISABLED(
         database: str = Field(
             ..., description="Name of the vector database instance to delete"
         ),
@@ -1185,8 +1233,7 @@ async def create_mcp_server() -> FastMCP:
             )
 
     @app.tool()
-    async def get_database_info(
-        database: str = Field(..., description="Name of the vector database instance"),
+    async def get_config(
         include_embeddings: bool = Field(
             default=False,
             description="Include list of supported embedding models in the response",
@@ -1197,12 +1244,26 @@ async def create_mcp_server() -> FastMCP:
         ),
     ) -> str:
         """
-        Get information about a vector database.
+        Get system configuration about the vector database backend.
 
-        Returns database type, collection name, and document count.
+        Returns backend type (Milvus/Weaviate), collections count, and total document count.
         Optionally includes supported embedding models when include_embeddings=True.
         Optionally includes supported chunking strategies when include_chunking=True.
         """
+        # Internal: database defaults to first registered
+        database: str | None = None
+        if database is None:
+            database = get_default_database_name()
+            if database is None:
+                return error_response(
+                    error_code="NO_DATABASES",
+                    message="No databases registered",
+                    suggestion="Register a database first: register_database(database='name', database_type='milvus')",
+                )
+            logger.info(
+                f"Database parameter not provided, using first registered database: {database}"
+            )
+
         db = get_database_by_name(database)
         ok, cnt_any = await run_with_timeout(
             db.count_documents(), "count_documents", get_timeout("count_documents")
@@ -1293,10 +1354,22 @@ async def create_mcp_server() -> FastMCP:
         )
 
     @app.tool()
-    async def list_collections(
-        database: str = Field(..., description="Name of the vector database instance"),
-    ) -> str:
+    async def list_collections() -> str:
         """List all collections in a vector database."""
+        # Internal: database defaults to first registered
+        database: str | None = None
+        if database is None:
+            database = get_default_database_name()
+            if database is None:
+                return error_response(
+                    error_code="NO_DATABASES",
+                    message="No databases registered",
+                    suggestion="Register a database first: register_database(database='name', database_type='milvus')",
+                )
+            logger.info(
+                f"Database parameter not provided, using first registered database: {database}"
+            )
+
         db = get_database_by_name(database)
         ok, colls_any = await run_with_timeout(
             db.list_collections(), "list_collections", get_timeout("list_collections")
@@ -1349,11 +1422,10 @@ async def create_mcp_server() -> FastMCP:
         )
 
     @app.tool()
-    async def get_collection_info(
-        database: str = Field(..., description="Name of the vector database instance"),
+    async def get_collection(
         collection: str | None = Field(
             default=None,
-            description="Name of the collection to get info for. If not provided, uses the default collection.",
+            description="Name of the collection (defaults to first registered if not provided)",
         ),
         include_count: bool = Field(
             default=False,
@@ -1361,6 +1433,26 @@ async def create_mcp_server() -> FastMCP:
         ),
     ) -> str:
         """Get information about a collection in a vector database."""
+        # Internal: database defaults to collection name or first registered
+        database: str | None = None
+        if database is None:
+            if collection is not None:
+                database = collection
+                logger.info(
+                    f"Database parameter not provided, defaulting to collection name: {database}"
+                )
+            else:
+                database = get_default_database_name()
+                if database is None:
+                    return error_response(
+                        error_code="NO_DATABASES",
+                        message="No databases registered",
+                        suggestion="Register a database first: register_database(database='name', database_type='milvus')",
+                    )
+                logger.info(
+                    f"Neither database nor collection provided, using first registered database: {database}"
+                )
+
         db = get_database_by_name(database)
         # Always delegate to the backend which can surface metadata even if
         # the collection doesn't exist (including chunking config and errors)
@@ -1442,8 +1534,11 @@ async def create_mcp_server() -> FastMCP:
 
     @app.tool()
     async def create_collection(
-        database: str = Field(..., description="Name of the vector database instance"),
         collection: str = Field(..., description="Name of the collection to create"),
+        database: str | None = Field(
+            default=None,
+            description="Optional identifier (defaults to collection name if not provided). For backward compatibility only.",
+        ),
         embedding: str = Field(
             default="auto",
             description=(
@@ -1483,6 +1578,13 @@ async def create_mcp_server() -> FastMCP:
         - Missing API key: Set OPENAI_API_KEY or configure custom embeddings (CUSTOM_EMBEDDING_URL, etc.)
         """
         try:
+            # Default database to collection name if not provided
+            if database is None:
+                database = collection
+                logger.info(
+                    f"Database parameter not provided, defaulting to collection name: {database}"
+                )
+
             # Validate database is registered
             if database not in vector_databases:
                 available = list(vector_databases.keys())
@@ -1613,7 +1715,6 @@ async def create_mcp_server() -> FastMCP:
 
     @app.tool()
     async def query(
-        database: str = Field(..., description="Name of the vector database instance"),
         query: str = Field(..., description="The query string to search for"),
         limit: int = Field(
             default=5, description="Maximum number of results to consider (1-100)"
@@ -1642,6 +1743,26 @@ async def create_mcp_server() -> FastMCP:
         - Invalid limit: Must be between 1 and 100
         """
         try:
+            # Internal: database defaults to collection name or first registered
+            database: str | None = None
+            if database is None:
+                if collection is not None:
+                    database = collection
+                    logger.info(
+                        f"Database parameter not provided, defaulting to collection name: {database}"
+                    )
+                else:
+                    database = get_default_database_name()
+                    if database is None:
+                        return error_response(
+                            error_code="NO_DATABASES",
+                            message="No databases registered",
+                            suggestion="Register a database first: register_database(database='name', database_type='milvus')",
+                        )
+                    logger.info(
+                        f"Neither database nor collection provided, using first registered database: {database}"
+                    )
+
             # Validate limit
             if limit < 1 or limit > 100:
                 return error_response(
@@ -1722,23 +1843,25 @@ async def create_mcp_server() -> FastMCP:
             )
         except KeyError:
             available = list(vector_databases.keys())
+            db_name = locals().get("database", "unknown")
             return error_response(
                 error_code="DB_NOT_FOUND",
-                message=f"Database '{database}' not found",
+                message=f"Database '{db_name}' not found",
                 details={
-                    "database": database,
+                    "database": db_name,
                     "available_databases": available,
                 },
-                suggestion=f"Create the database first: create_database(database='{database}', database_type='milvus')",
+                suggestion=f"Create the database first: create_database(database='{db_name}', database_type='milvus')",
             )
         except Exception as e:
-            error_msg = f"Failed to query vector database '{database}': {str(e)}"
+            db_name = locals().get("database", "unknown")
+            error_msg = f"Failed to query vector database '{db_name}': {str(e)}"
             logger.error(error_msg)
             return error_response(
                 error_code="QUERY_FAILED",
                 message=error_msg,
                 details={
-                    "database": database,
+                    "database": db_name,
                     "query": query,
                     "collection": collection,
                 },
@@ -1746,7 +1869,6 @@ async def create_mcp_server() -> FastMCP:
 
     @app.tool()
     async def search(
-        database: str = Field(..., description="Name of the vector database instance"),
         query: str = Field(..., description="The query string to search for"),
         limit: int = Field(
             default=5, description="Maximum number of results to consider"
@@ -1777,6 +1899,26 @@ async def create_mcp_server() -> FastMCP:
         Use min_score to filter low-quality results and metadata_filters to narrow by document properties.
         """
         try:
+            # Internal: database defaults to collection name or first registered
+            database: str | None = None
+            if database is None:
+                if collection is not None:
+                    database = collection
+                    logger.info(
+                        f"Database parameter not provided, defaulting to collection name: {database}"
+                    )
+                else:
+                    database = get_default_database_name()
+                    if database is None:
+                        return error_response(
+                            error_code="NO_DATABASES",
+                            message="No databases registered",
+                            suggestion="Register a database first: register_database(database='name', database_type='milvus')",
+                        )
+                    logger.info(
+                        f"Neither database nor collection provided, using first registered database: {database}"
+                    )
+
             db = get_database_by_name(database)
             kwargs: dict[str, Any] = {"limit": limit}
             if collection is not None:
@@ -1803,7 +1945,6 @@ async def create_mcp_server() -> FastMCP:
             results = response if isinstance(response, list) else []
 
             return search_results_response(
-                database=database,
                 query=query,
                 results_count=len(results),
                 results=results,
@@ -1812,38 +1953,47 @@ async def create_mcp_server() -> FastMCP:
             )
         except KeyError:
             available = list(vector_databases.keys())
+            db_name = locals().get("database", "unknown")
             return error_response(
                 error_code="DB_NOT_FOUND",
-                message=f"Database '{database}' not found",
+                message=f"Database '{db_name}' not found",
                 details={
-                    "database": database,
+                    "database": db_name,
                     "available_databases": available,
                 },
-                suggestion=f"Create the database first: create_database(database='{database}', database_type='milvus')",
+                suggestion=f"Create the database first: create_database(database='{db_name}', database_type='milvus')",
             )
         except Exception as e:
-            error_msg = f"Failed to search vector database '{database}': {str(e)}"
+            db_name = locals().get("database", "unknown")
+            error_msg = f"Failed to search vector database '{db_name}': {str(e)}"
             logger.error(error_msg)
             return error_response(
                 error_code="SEARCH_FAILED",
                 message=error_msg,
                 details={
-                    "database": database,
+                    "database": db_name,
                     "query": query,
                     "collection": collection,
                 },
             )
 
-    @app.tool()
-    async def list_databases() -> str:
-        """List all available vector database instances."""
+    # DISABLED: Confusing terminology - lists "databases" but actually shows collections
+    # Use list_collections() or get_collection_info() instead
+    # @app.tool()
+    async def list_databases_DISABLED() -> str:
+        """List all registered vector database instances.
+
+        Note: In the current architecture, each registered 'database' represents a collection.
+        The terminology is confusing because 'database' parameter actually refers to a collection instance.
+        This is a known limitation where database and collection concepts are conflated.
+        """
         logger.info(
             f"Listing databases. Current vector_databases keys: {list(vector_databases.keys())}"
         )
 
         if not vector_databases:
             return success_response(
-                message="No vector databases are currently active",
+                message="No collections are currently registered. Use create_database() to register a collection.",
                 data={"databases": [], "count": 0},
                 operation="list_databases",
             )

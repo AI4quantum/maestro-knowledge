@@ -177,18 +177,15 @@ def collection_created_response(
         message=f"Collection '{collection}' created successfully",
         data={
             "collection": collection,
-            "database": database,
             "embedding": embedding,
             "chunking_strategy": chunking_strategy,
         },
         operation="create_collection",
-        database=database,
         collection=collection,
     )
 
 
 def collection_deleted_response(
-    database: str,
     collection: str,
     documents_deleted: int = 0,
     forced: bool = False,
@@ -196,7 +193,6 @@ def collection_deleted_response(
     """Create response for collection deletion.
 
     Args:
-        database: Database name
         collection: Collection name
         documents_deleted: Number of documents deleted
         forced: Whether force deletion was used
@@ -212,18 +208,15 @@ def collection_deleted_response(
         message=message,
         data={
             "collection": collection,
-            "database": database,
             "documents_deleted": documents_deleted,
             "forced": forced,
         },
         operation="delete_collection",
-        database=database,
         collection=collection,
     )
 
 
 def documents_written_response(
-    database: str,
     collection: str,
     documents_written: int,
     chunks_created: int,
@@ -234,7 +227,6 @@ def documents_written_response(
     """Create response for document writing.
 
     Args:
-        database: Database name
         collection: Collection name
         documents_written: Number of documents written
         chunks_created: Number of chunks created
@@ -263,13 +255,11 @@ def documents_written_response(
         data=data,
         metadata=metadata if metadata else None,
         operation="write_documents",
-        database=database,
         collection=collection,
     )
 
 
 def documents_deleted_response(
-    database: str,
     collection: str,
     documents_deleted: int,
     forced: bool = False,
@@ -277,7 +267,6 @@ def documents_deleted_response(
     """Create response for document deletion.
 
     Args:
-        database: Database name
         collection: Collection name
         documents_deleted: Number of documents deleted
         forced: Whether force deletion was used
@@ -297,13 +286,11 @@ def documents_deleted_response(
             "forced": forced,
         },
         operation="delete_documents",
-        database=database,
         collection=collection,
     )
 
 
 def search_results_response(
-    database: str,
     query: str,
     results_count: int,
     results: list[dict[str, Any]],
@@ -313,7 +300,6 @@ def search_results_response(
     """Create response for search results.
 
     Args:
-        database: Database name
         query: Search query
         results_count: Number of results returned
         results: Search results
@@ -342,7 +328,6 @@ def search_results_response(
         data=data,
         metadata=metadata if metadata else None,
         operation="search",
-        database=database,
         collection=collection,
     )
 

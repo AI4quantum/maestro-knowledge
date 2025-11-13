@@ -50,7 +50,7 @@ async def run_database_management_tests(client: "Client", backend_name: str) -> 
     assert hasattr(res, "data"), f"list_collections failed: {res}"
 
     # Test get_collection_info
-    res = await client.call_tool("get_collection_info", {"database": database})
+    res = await client.call_tool("get_collection", {"database": database})
     assert hasattr(res, "data"), f"get_collection_info failed: {res}"
 
     # Cleanup
@@ -93,7 +93,7 @@ async def run_configuration_discovery_tests(
 
     # Test get_database_info with include_embeddings
     res = await client.call_tool(
-        "get_database_info", {"database": database, "include_embeddings": True}
+        "get_config", {"database": database, "include_embeddings": True}
     )
     assert hasattr(res, "data")
     # Should contain embedding options (backend-agnostic check)
@@ -101,7 +101,7 @@ async def run_configuration_discovery_tests(
 
     # Test get_database_info with include_chunking
     res = await client.call_tool(
-        "get_database_info", {"database": database, "include_chunking": True}
+        "get_config", {"database": database, "include_chunking": True}
     )
     assert hasattr(res, "data")
     # Should contain chunking strategies

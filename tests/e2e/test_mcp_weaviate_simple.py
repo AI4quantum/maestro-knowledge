@@ -156,7 +156,7 @@ async def test_weaviate_database_management(mcp_http_server: dict[str, Any]) -> 
         assert hasattr(res, "data")
 
         # Test get_database_info
-        res = await client.call_tool("get_database_info", {"database": database})
+        res = await client.call_tool("get_config", {"database": database})
         assert hasattr(res, "data")
 
         # Test list_collections
@@ -217,7 +217,7 @@ async def test_weaviate_configuration_discovery(
 
             # Test get_database_info with include_embeddings
             res = await client.call_tool(
-                "get_database_info", {"database": database, "include_embeddings": True}
+                "get_config", {"database": database, "include_embeddings": True}
             )
             assert hasattr(res, "data")
             # Backend-agnostic validation - just check we get some response
@@ -228,7 +228,7 @@ async def test_weaviate_configuration_discovery(
 
             # Test get_database_info with include_chunking
             res = await client.call_tool(
-                "get_database_info", {"database": database, "include_chunking": True}
+                "get_config", {"database": database, "include_chunking": True}
             )
             assert hasattr(res, "data")
             # Should contain chunking strategies like 'Fixed', 'Sentence', etc.

@@ -81,7 +81,7 @@ async def run_database_management_tests(client: Client, backend_name: str) -> No
     assert response["status"] == "success", f"list_collections failed: {response}"
 
     # Test get_collection_info
-    res = await client.call_tool("get_collection_info", {"database": db_name})
+    res = await client.call_tool("get_collection", {"database": db_name})
     response = parse_response(res)
     assert response["status"] == "success", f"get_collection_info failed: {response}"
 
@@ -97,7 +97,7 @@ async def run_database_management_tests(client: Client, backend_name: str) -> No
     )
 
     # Test get_database_info - HIGH PRIORITY addition
-    res = await client.call_tool("get_database_info", {"database": db_name})
+    res = await client.call_tool("get_config", {"database": db_name})
     response = parse_response(res)
     assert response["status"] == "success", f"get_database_info failed: {response}"
 
@@ -159,7 +159,7 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
 
     # Test get_collection_info with count
     res = await client.call_tool(
-        "get_collection_info", {"database": db_name, "include_count": True}
+        "get_collection", {"database": db_name, "include_count": True}
     )
     response = parse_response(res)
     assert response["status"] == "success", (
@@ -319,7 +319,7 @@ async def run_configuration_discovery_tests(client: Client, backend_name: str) -
 
     # Test get_database_info with include_embeddings
     res = await client.call_tool(
-        "get_database_info", {"database": db_name, "include_embeddings": True}
+        "get_config", {"database": db_name, "include_embeddings": True}
     )
     response = parse_response(res)
     assert response["status"] == "success"
@@ -332,7 +332,7 @@ async def run_configuration_discovery_tests(client: Client, backend_name: str) -
 
     # Test get_database_info with include_chunking
     res = await client.call_tool(
-        "get_database_info", {"database": db_name, "include_chunking": True}
+        "get_config", {"database": db_name, "include_chunking": True}
     )
     response = parse_response(res)
     assert response["status"] == "success"
@@ -855,7 +855,7 @@ async def run_full_flow_test(client: Client, backend_name: str) -> None:
 
         # Count documents via get_collection_info
         res = await client.call_tool(
-            "get_collection_info", {"database": db_name, "include_count": True}
+            "get_collection", {"database": db_name, "include_count": True}
         )
         response = parse_response(res)
         if response["status"] != "success":
@@ -864,7 +864,7 @@ async def run_full_flow_test(client: Client, backend_name: str) -> None:
             )
 
         # Get collection info
-        res = await client.call_tool("get_collection_info", {"database": db_name})
+        res = await client.call_tool("get_collection", {"database": db_name})
         response = parse_response(res)
         if response["status"] != "success":
             pytest.fail(f"get_collection_info failed for {backend_name}: {response}")
