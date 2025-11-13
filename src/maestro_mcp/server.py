@@ -739,12 +739,29 @@ async def create_mcp_server() -> FastMCP:
         document_ids: list[str] = Field(
             ..., description="List of document IDs to delete"
         ),
+        force: bool = Field(
+            default=False,
+            description="If False, returns error if operation would delete data. If True, proceeds with deletion.",
+        ),
     ) -> str:
-        """Delete documents from a collection in a vector database by their IDs."""
+        """Delete documents from a collection in a vector database by their IDs.
+
+        Safety: By default (force=False), this operation requires explicit confirmation.
+        Set force=True to proceed with deletion.
+        """
         db = get_database_by_name(database)
 
         # Set the collection context
         db.collection_name = collection
+
+        # Safety check: require force=True for deletion
+        if not force:
+            return (
+                f"Error: Cannot delete {len(document_ids)} documents from collection '{collection}' - "
+                f"this operation requires force=True to proceed. "
+                f"Use: delete_documents(database='{database}', collection='{collection}', "
+                f"document_ids=[...], force=True)"
+            )
 
         ok, _ = await run_with_timeout(
             db.delete_documents(document_ids), "delete", get_timeout("delete")
@@ -752,7 +769,10 @@ async def create_mcp_server() -> FastMCP:
         if not ok:
             return f"Error: Failed to delete documents from collection '{collection}' in database '{database}'"
 
-        return f"Successfully deleted {len(document_ids)} documents from collection '{collection}' in database '{database}'"
+        return (
+            f"Successfully deleted {len(document_ids)} documents from collection '{collection}' "
+            f"in database '{database}'. Warning: This operation cannot be undone."
+        )
 
     @app.tool()
     async def get_document(
@@ -804,8 +824,17 @@ async def create_mcp_server() -> FastMCP:
         collection: str | None = Field(
             default=None, description="Name of the collection to delete"
         ),
+        force: bool = Field(
+            default=False,
+            description="If False, checks if collection is empty before deletion. If True, deletes regardless of contents.",
+        ),
     ) -> str:
-        """Delete an entire collection from a vector database."""
+        """Delete an entire collection from a vector database.
+
+        Safety: By default (force=False), this operation checks if the collection is empty.
+        If the collection contains documents, it will return an error with statistics.
+        Set force=True to delete the collection and all its contents.
+        """
         if database in vector_databases:
             db = get_database_by_name(database)
 
@@ -824,6 +853,26 @@ async def create_mcp_server() -> FastMCP:
                 raise ValueError(
                     f"Collection '{collection}' not found in vector database '{database}'"
                 )
+
+            # Safety check: if force=False, check if collection is empty
+            if not force:
+                # Get document count for the collection
+                ok, count_any = await run_with_timeout(
+                    db.count_documents_in_collection(collection),
+                    "count_documents",
+                    get_timeout("list_documents"),
+                )
+                doc_count = (
+                    cast("int", count_any) if ok and isinstance(count_any, int) else 0
+                )
+
+                if doc_count > 0:
+                    return (
+                        f"Error: Cannot delete collection '{collection}' - it contains {doc_count} documents. "
+                        f"This operation requires force=True to proceed. "
+                        f"Use: delete_collection(database='{database}', collection='{collection}', force=True)"
+                    )
+
             ok, _ = await run_with_timeout(
                 db.delete_collection(collection),
                 "delete",
@@ -832,7 +881,8 @@ async def create_mcp_server() -> FastMCP:
             if not ok:
                 return f"Error: Failed to delete collection '{collection}' from vector database '{database}'"
 
-            return f"Successfully deleted collection '{collection}' from vector database '{database}'"
+            warning = " Warning: This operation cannot be undone." if force else ""
+            return f"Successfully deleted collection '{collection}' from vector database '{database}'.{warning}"
         try:
             from src.db.vector_db_milvus import MilvusVectorDatabase
 
@@ -857,17 +907,50 @@ async def create_mcp_server() -> FastMCP:
         database: str = Field(
             ..., description="Name of the vector database instance to delete"
         ),
+        force: bool = Field(
+            default=False,
+            description="If False, checks if database has collections before deletion. If True, deletes regardless of contents.",
+        ),
     ) -> str:
-        """Delete a vector database and clean up all resources."""
+        """Delete a vector database and clean up all resources.
+
+        Safety: By default (force=False), this operation checks if the database has collections.
+        If the database contains collections, it will return an error with statistics.
+        Set force=True to delete the database and all its collections.
+        """
         if database in vector_databases:
             db = get_database_by_name(database)
+
+            # Safety check: if force=False, check if database has collections
+            if not force:
+                ok, colls_any = await run_with_timeout(
+                    db.list_collections(),
+                    "list_collections",
+                    get_timeout("list_collections"),
+                )
+                collections = (
+                    cast("list[str]", colls_any)
+                    if ok and isinstance(colls_any, list)
+                    else []
+                )
+
+                if len(collections) > 0:
+                    return (
+                        f"Error: Cannot delete database '{database}' - it contains {len(collections)} collections. "
+                        f"Collections: {', '.join(collections)}. "
+                        f"This operation requires force=True to proceed. "
+                        f"Use: delete_database(database='{database}', force=True)"
+                    )
+
             ok, _ = await run_with_timeout(
                 db.cleanup(), "cleanup", get_timeout("cleanup")
             )
             if not ok:
                 return f"Error: Failed to cleanup vector database '{database}'"
             del vector_databases[database]
-            return f"Successfully cleaned up and removed vector database '{database}'"
+
+            warning = " Warning: This operation cannot be undone." if force else ""
+            return f"Successfully cleaned up and removed vector database '{database}'.{warning}"
         try:
             from src.db.vector_db_milvus import MilvusVectorDatabase
 

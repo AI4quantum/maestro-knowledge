@@ -65,7 +65,9 @@ async def run_database_management_tests(client: Client, backend_name: str) -> No
     assert hasattr(res, "data"), f"get_database_info failed: {res}"
 
     # Cleanup
-    res = await client.call_tool("delete_database", {"database": db_name})
+    res = await client.call_tool(
+        "delete_database", {"database": db_name, "force": True}
+    )
     assert hasattr(res, "data"), f"cleanup failed: {res}"
 
 
@@ -170,13 +172,16 @@ async def run_document_operations_tests(client: Client, backend_name: str) -> No
                 "database": db_name,
                 "collection": f"{db_name}_Collection",
                 "document_ids": [first_doc_id],
+                "force": True,
             },
         )
         if not hasattr(res, "data") and isinstance(res, str):
             assert res, f"delete_documents failed: {res}"
 
     # Cleanup
-    res = await client.call_tool("delete_database", {"database": db_name})
+    res = await client.call_tool(
+        "delete_database", {"database": db_name, "force": True}
+    )
     if not hasattr(res, "data") and isinstance(res, str):
         assert res, f"cleanup failed: {res}"
 
@@ -252,7 +257,9 @@ async def run_query_operations_tests(client: Client, backend_name: str) -> None:
     assert hasattr(res, "data") or hasattr(res, "content"), f"query failed: {res}"
 
     # Cleanup
-    res = await client.call_tool("delete_database", {"database": db_name})
+    res = await client.call_tool(
+        "delete_database", {"database": db_name, "force": True}
+    )
     assert hasattr(res, "data")
 
 
@@ -296,7 +303,9 @@ async def run_configuration_discovery_tests(client: Client, backend_name: str) -
     )
 
     # Cleanup
-    res = await client.call_tool("delete_database", {"database": db_name})
+    res = await client.call_tool(
+        "delete_database", {"database": db_name, "force": True}
+    )
     assert hasattr(res, "data")
 
 
@@ -362,7 +371,9 @@ async def run_document_retrieval_tests(client: Client, backend_name: str) -> Non
             assert hasattr(res, "data")
 
     # Cleanup
-    res = await client.call_tool("delete_database", {"database": db_name})
+    res = await client.call_tool(
+        "delete_database", {"database": db_name, "force": True}
+    )
     assert hasattr(res, "data")
 
 
@@ -428,7 +439,9 @@ async def run_bulk_operations_tests(client: Client, backend_name: str) -> None:
             assert hasattr(res, "data")
 
     # Cleanup
-    res = await client.call_tool("delete_database", {"database": db_name})
+    res = await client.call_tool(
+        "delete_database", {"database": db_name, "force": True}
+    )
     assert hasattr(res, "data")
 
 
@@ -553,6 +566,7 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
                     "database": db_name,
                     "collection": collection_name,
                     "document_ids": [doc_id],
+                    "force": True,
                 },
             )
             if not hasattr(res, "data"):
@@ -564,6 +578,7 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
             {
                 "database": db_name,
                 "collection": collection_name,
+                "force": True,
             },
         )
         if not hasattr(res, "data"):
@@ -590,7 +605,9 @@ async def run_collection_specific_tests(client: Client, backend_name: str) -> No
         # Always cleanup if we created resources
         if needs_cleanup:
             try:
-                res = await client.call_tool("delete_database", {"database": db_name})
+                res = await client.call_tool(
+                    "delete_database", {"database": db_name, "force": True}
+                )
             except Exception:
                 pass
 
@@ -758,6 +775,8 @@ async def run_full_flow_test(client: Client, backend_name: str) -> None:
     finally:
         # Cleanup
         try:
-            res = await client.call_tool("delete_database", {"database": db_name})
+            res = await client.call_tool(
+                "delete_database", {"database": db_name, "force": True}
+            )
         except Exception:
             pass

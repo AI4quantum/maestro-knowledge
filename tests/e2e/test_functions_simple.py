@@ -54,7 +54,9 @@ async def run_database_management_tests(client: "Client", backend_name: str) -> 
     assert hasattr(res, "data"), f"get_collection_info failed: {res}"
 
     # Cleanup
-    res = await client.call_tool("delete_database", {"database": database})
+    res = await client.call_tool(
+        "delete_database", {"database": database, "force": True}
+    )
     assert hasattr(res, "data"), f"cleanup failed: {res}"
 
 
@@ -111,5 +113,7 @@ async def run_configuration_discovery_tests(
     )
 
     # Cleanup
-    res = await client.call_tool("delete_database", {"database": database})
+    res = await client.call_tool(
+        "delete_database", {"database": database, "force": True}
+    )
     assert hasattr(res, "data")

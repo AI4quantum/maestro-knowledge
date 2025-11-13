@@ -164,7 +164,9 @@ async def test_weaviate_database_management(mcp_http_server: dict[str, Any]) -> 
         assert hasattr(res, "data")
 
         # Cleanup
-        res = await client.call_tool("delete_database", {"database": database})
+        res = await client.call_tool(
+            "delete_database", {"database": database, "force": True}
+        )
         assert hasattr(res, "data")
 
 
@@ -239,7 +241,9 @@ async def test_weaviate_configuration_discovery(
             print("✓ Got supported chunking strategies")
 
             # Cleanup
-            res = await client.call_tool("delete_database", {"database": database})
+            res = await client.call_tool(
+                "delete_database", {"database": database, "force": True}
+            )
             assert hasattr(res, "data")
             print("✓ Configuration discovery tests completed")
 
