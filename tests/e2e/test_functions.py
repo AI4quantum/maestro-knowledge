@@ -424,7 +424,11 @@ async def run_bulk_operations_tests(client: Client, backend_name: str) -> None:
 
     search_results = response["data"].get("results", [])
     if search_results and len(search_results) >= 2:
-        doc_ids = [doc.get("id") for doc in search_results[:2] if doc.get("id")]
+        doc_ids = [
+            doc.get("document_id")
+            for doc in search_results[:2]
+            if doc.get("document_id")
+        ]
         if doc_ids:
             # Test delete_documents (bulk)
             res = await client.call_tool(
