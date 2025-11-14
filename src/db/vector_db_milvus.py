@@ -622,11 +622,20 @@ class MilvusVectorDatabase(VectorDatabase):
             raise ValueError("Milvus client is not available")
 
         target_collection = collection_name or self.collection_name
+
+        # Ensure collection is loaded into memory before querying
+        try:
+            if hasattr(self.client, "load_collection"):
+                await self.client.load_collection(target_collection)
+        except Exception:
+            pass  # Continue even if load fails
+
         try:
             # Query for all records with matching document_id in metadata
+            # Note: metadata is stored as VARCHAR (JSON string), so we use LIKE for filtering
             results = await self.client.query(
                 target_collection,
-                filter=f'metadata["document_id"] == "{document_id}"',
+                filter=f'metadata LIKE \'%"document_id": "{document_id}"%\'',
                 output_fields=["id", "url", "text", "metadata"],
                 # Retrieve a reasonable upper bound of chunks to allow reassembly
                 limit=10000,
@@ -713,13 +722,23 @@ class MilvusVectorDatabase(VectorDatabase):
             warnings.warn("No collection name set. Returning empty list.")
             return []
 
+        # Ensure collection is loaded into memory before querying
+        try:
+            if hasattr(self.client, "load_collection"):
+                await self.client.load_collection(self.collection_name)
+        except Exception:
+            pass  # Continue even if load fails
+
         try:
             # Query all chunks to aggregate by document_id
+            # Use empty filter to get all records (required by Milvus query API)
             results = await self.client.query(
                 self.collection_name,
+                filter="",  # Empty filter = get all
                 output_fields=["url", "metadata"],
-                limit=10000,  # Get all chunks to deduplicate
+                limit=100,  # Reduced limit for testing
             )
+            logger.info(f"Number of chunks retrieved: {len(results)}")
 
             # Group chunks by document_id and store full metadata
             docs_by_id: dict[str, dict[str, Any]] = {}
@@ -1194,7 +1213,8 @@ class MilvusVectorDatabase(VectorDatabase):
         for doc_id in document_ids:
             try:
                 # Use filter expression to delete all chunks with this document_id
-                expr = f'metadata["document_id"] == "{doc_id}"'
+                # Note: metadata is stored as VARCHAR (JSON string), so we use LIKE for filtering
+                expr = f'metadata LIKE \'%"document_id": "{doc_id}"%\''
                 await self.client.delete(
                     collection_name=self.collection_name, filter=expr
                 )
