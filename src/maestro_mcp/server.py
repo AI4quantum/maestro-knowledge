@@ -1439,11 +1439,36 @@ async def create_mcp_server() -> FastMCP:
         if database is None:
             database = get_default_database_name()
             if database is None:
-                return error_response(
-                    error_code="NO_DATABASES",
-                    message="No collections registered",
-                    suggestion="Create a collection first: create_collection(collection='name')",
-                )
+                # Try to bootstrap a connection to check if backend is available
+                try:
+                    db = get_database_by_name("_health_check", auto_bootstrap=True)
+                    # Test backend connectivity
+                    ok, colls_any = await run_with_timeout(
+                        db.list_collections(),
+                        "list_collections",
+                        get_timeout("list_collections"),
+                    )
+                    if not ok:
+                        # Backend unreachable
+                        return error_response(
+                            error_code="BACKEND_UNAVAILABLE",
+                            message="Vector database backend is not responding",
+                            details={"timeout": get_timeout("list_collections")},
+                            suggestion="Check that your vector database (Milvus/Weaviate) is running and accessible. Verify MILVUS_URI or WEAVIATE_URL environment variables.",
+                        )
+                    # Backend is reachable but no collections exist
+                    return error_response(
+                        error_code="NO_COLLECTIONS",
+                        message="No collections exist yet",
+                        suggestion="Create a collection first: create_collection(collection='name')",
+                    )
+                except Exception as e:
+                    # Backend connection failed
+                    return error_response(
+                        error_code="BACKEND_CONNECTION_FAILED",
+                        message=f"Failed to connect to vector database backend: {str(e)}",
+                        suggestion="Ensure your vector database is running and environment variables (MILVUS_URI or WEAVIATE_URL) are correctly configured.",
+                    )
             logger.info(
                 f"Database parameter not provided, using first registered database: {database}"
             )

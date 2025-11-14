@@ -335,7 +335,12 @@ Here's how an AI agent might interact with multiple vector databases:
 
 The server respects the following environment variables:
 
+### Database Configuration
 - `VECTOR_DB_TYPE`: Default vector database type (defaults to "weaviate")
+- `MILVUS_URI`: Milvus connection URI (e.g., `http://localhost:19530`)
+- `WEAVIATE_URL`: Weaviate connection URL (e.g., `http://localhost:8080`)
+
+### Embedding Configuration
 - `OPENAI_API_KEY`: Required for OpenAI embedding models
 - `CUSTOM_EMBEDDING_URL`: The URL for the custom embedding endpoint (required for `custom_local` embedding for Milvus).
 - `CUSTOM_EMBEDDING_API_KEY`: The API key for the custom embedding endpoint (optional, but recommended for authentication).
@@ -351,7 +356,63 @@ The server respects the following environment variables:
     ```
     CUSTOM_EMBEDDING_HEADERS='API_SECRET_KEY=your-secret-key,Another-Header=value'
     ```
-- Database-specific environment variables for Weaviate and Milvus connections
+
+### Timeout Configuration
+
+All MCP tool operations have configurable timeouts to prevent hanging operations. You can customize timeouts using environment variables:
+
+#### Global Timeout
+- `MCP_TOOL_TIMEOUT`: Default timeout for all tools (default: 15 seconds)
+
+#### Per-Operation Timeouts
+Override specific operation timeouts using `MCP_TIMEOUT_<OPERATION>`:
+
+```bash
+# Database operations
+export MCP_TIMEOUT_LIST_DATABASES=15        # List all databases (default: 15s)
+export MCP_TIMEOUT_LIST_COLLECTIONS=15      # List collections (default: 15s)
+export MCP_TIMEOUT_GET_DATABASE_INFO=15     # Get database info (default: 15s)
+export MCP_TIMEOUT_GET_COLLECTION_INFO=30   # Get collection info (default: 30s)
+
+# Collection operations
+export MCP_TIMEOUT_CREATE_COLLECTION=60     # Create collection (default: 60s)
+export MCP_TIMEOUT_SETUP_DATABASE=60        # Setup database (default: 60s)
+export MCP_TIMEOUT_DELETE=60                # Delete operations (default: 60s)
+
+# Document operations
+export MCP_TIMEOUT_LIST_DOCUMENTS=30        # List documents (default: 30s)
+export MCP_TIMEOUT_COUNT_DOCUMENTS=15       # Count documents (default: 15s)
+export MCP_TIMEOUT_WRITE_SINGLE=900         # Write single document (default: 15 min)
+export MCP_TIMEOUT_WRITE_BULK=3600          # Write bulk documents (default: 60 min)
+
+# Query operations
+export MCP_TIMEOUT_QUERY=30                 # Query documents (default: 30s)
+export MCP_TIMEOUT_SEARCH=30                # Search documents (default: 30s)
+
+# Maintenance operations
+export MCP_TIMEOUT_CLEANUP=60               # Cleanup resources (default: 60s)
+export MCP_TIMEOUT_RESYNC=60                # Resync databases (default: 60s)
+export MCP_TIMEOUT_HEALTH=30                # Health check (default: 30s)
+```
+
+#### Example: Increase Timeout for Slow Backend
+
+If your vector database backend is slow to respond (e.g., during initialization), increase the relevant timeouts:
+
+```bash
+# In your .env file or shell
+export MCP_TIMEOUT_CREATE_COLLECTION=120    # 2 minutes
+export MCP_TIMEOUT_LIST_COLLECTIONS=30      # 30 seconds
+export MCP_TIMEOUT_WRITE_BULK=7200          # 2 hours for large bulk writes
+```
+
+#### Timeout Error Messages
+
+When an operation times out, you'll receive a detailed error message with:
+- The operation that timed out
+- The timeout duration
+- Troubleshooting steps
+- The environment variable to adjust the timeout
 
 ## Error Handling
 

@@ -159,18 +159,21 @@ Each document must include:
     @staticmethod
     def operation_timeout(operation: str, timeout: int) -> str:
         """Error when operation times out."""
+        env_var = f"MCP_TIMEOUT_{operation.upper().replace(' ', '_')}"
         return f"""Operation '{operation}' timed out after {timeout} seconds.
 
 Possible causes:
-- Database server not responding
+- Database server not responding or not running
 - Network connectivity issues
 - Operation too complex (try reducing limit or simplifying query)
+- Backend initialization taking longer than expected
 
 Troubleshooting:
-1. Check database server status
+1. Check database server status (Milvus: http://localhost:19530, Weaviate: http://localhost:8080)
 2. Verify network connectivity
-3. Try a simpler operation first
-4. Increase timeout via environment variables (see documentation)"""
+3. Try a simpler operation first (e.g., list_collections)
+4. Increase timeout via environment variable: export {env_var}=120  # 2 minutes
+5. Check server logs for errors: tail -f /tmp/mcp_server.log"""
 
     @staticmethod
     def generic_operation_failed(operation: str, database: str, details: str) -> str:
