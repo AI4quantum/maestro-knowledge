@@ -561,11 +561,11 @@ class MilvusVectorDatabase(VectorDatabase):
             insert_duration_ms = int((time.perf_counter() - insert_start) * 1000)
 
             # Best-effort: ensure Milvus has flushed/loaded the inserted data so
-            # that subsequent searches and collection stats reflect the new rows.
-            # Different Milvus client wrappers expose different APIs (flush/load/load_collection).
-            # Call any available methods safely and ignore failures.
+            # that subsequent queries reflect the new rows.
+            # CRITICAL: Must wait for flush to complete before loading.
             try:
-                # pymilvus-style flush
+                # Step 1: Issue flush command (non-blocking)
+                logger.info(f"Issuing flush command for: {target_collection}")
                 if hasattr(self.client, "flush"):
                     try:
                         # Try string format first (more common)
@@ -577,21 +577,63 @@ class MilvusVectorDatabase(VectorDatabase):
                         except Exception:
                             pass
 
-                # load collection into queryable memory (client-specific)
+                # Step 2: CRITICAL - Poll get_collection_stats() until row_count reflects new data
+                # flush() is non-blocking, so we must poll until the data is sealed.
+                # search() works immediately because it reads "growing" segments.
+                # query() only works on "sealed" segments, which requires waiting for flush completion.
+                if hasattr(self.client, "get_collection_stats"):
+                    max_wait_time = 10.0  # Total seconds to wait
+                    poll_interval = 0.5  # Seconds between checks
+                    time_waited = 0.0
+                    sealed_data_exists = False
+                    expected_rows = total_chunks  # Number of chunks we just inserted
+
+                    logger.info(
+                        f"Waiting for flush to complete (polling stats, expecting {expected_rows} rows)..."
+                    )
+                    stats = {}
+                    while time_waited < max_wait_time:
+                        try:
+                            stats = await self.client.get_collection_stats(
+                                target_collection
+                            )
+                            current_row_count = stats.get("row_count", 0)
+
+                            # Check if row_count reflects the new data
+                            if current_row_count >= expected_rows:
+                                logger.info(f"Flush complete. Stats: {stats}")
+                                sealed_data_exists = True
+                                break
+                        except Exception as e:
+                            logger.warning(f"Error getting stats (will retry): {e}")
+
+                        await asyncio.sleep(poll_interval)
+                        time_waited += poll_interval
+
+                    if not sealed_data_exists:
+                        logger.warning(
+                            f"Timed out waiting for flush after {max_wait_time}s. "
+                            f"Stats: {stats}. Expected {expected_rows} rows, got {stats.get('row_count', 0)}."
+                        )
+
+                # Step 3: Now load the collection (will include newly sealed segments)
+                logger.info(f"Loading collection: {target_collection}")
                 if hasattr(self.client, "load_collection"):
                     try:
                         await self.client.load_collection(target_collection)
-                    except Exception:
-                        pass
+                        logger.info("Collection loaded. Data is now queryable.")
+                    except Exception as e:
+                        logger.warning(f"Failed to load collection: {e}")
                 elif hasattr(self.client, "load"):
                     try:
                         # some wrappers provide a load method
                         await self.client.load(target_collection)
-                    except Exception:
-                        pass
-            except Exception:
+                        logger.info("Collection loaded. Data is now queryable.")
+                    except Exception as e:
+                        logger.warning(f"Failed to load collection: {e}")
+            except Exception as e:
                 # Don't let flushing/loading interfere with the write path
-                pass
+                logger.warning(f"Error during flush/load sequence: {e}")
 
         total_duration_ms = int((time.perf_counter() - build_start) * 1000)
 

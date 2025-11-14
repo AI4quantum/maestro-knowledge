@@ -1111,6 +1111,9 @@ async def create_mcp_server() -> FastMCP:
 
         db = get_database_by_name(database)
 
+        # Set the collection context
+        db.collection_name = collection
+
         # Check if the collection exists
         ok, collections_any = await run_with_timeout(
             db.list_collections(), "list_collections", get_timeout("list_collections")
