@@ -221,8 +221,7 @@ def documents_written_response(
     documents_written: int,
     chunks_created: int,
     embedding_model: str,
-    collection_total_documents: int | None = None,
-    sample_query: str | None = None,
+    document_ids: list[str] | None = None,
 ) -> str:
     """Create response for document writing.
 
@@ -231,8 +230,7 @@ def documents_written_response(
         documents_written: Number of documents written
         chunks_created: Number of chunks created
         embedding_model: Embedding model used
-        collection_total_documents: Total documents in collection
-        sample_query: Sample query suggestion
+        document_ids: List of document IDs that were created
 
     Returns:
         JSON success response
@@ -244,16 +242,13 @@ def documents_written_response(
         "embedding_model": embedding_model,
     }
 
-    metadata: dict[str, Any] = {}
-    if collection_total_documents is not None:
-        metadata["collection_total_documents"] = collection_total_documents
-    if sample_query:
-        metadata["sample_query"] = sample_query
+    # Add document IDs if available
+    if document_ids:
+        data["document_ids"] = document_ids
 
     return success_response(
         message=f"Wrote {documents_written} document{'s' if documents_written != 1 else ''} to collection '{collection}'",
         data=data,
-        metadata=metadata if metadata else None,
         operation="write_documents",
         collection=collection,
     )

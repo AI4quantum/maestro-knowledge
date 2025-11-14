@@ -722,14 +722,16 @@ async def create_mcp_server() -> FastMCP:
         """
         Write documents to a vector database with automatic URL fetching and format conversion.
 
-        IMPORTANT: You must specify the collection parameter. Collections are NOT created
-        automatically - use create_collection() first.
+        Collection Management:
+        - If the collection exists: Documents are added to it
+        - If the collection doesn't exist: You'll get a COLL_NOT_FOUND error with available collections
+        - To create a new collection: Use create_collection() first
 
         Document Format:
         Each document in the 'documents' list should be a dict with:
         - 'text' (required): Document content
-        - 'url' (optional): Source URL or identifier (auto-generated from text hash if empty)
-        - 'metadata' (optional): Additional metadata dict
+        - 'url' (optional): Source URL or identifier (recommended for document identification)
+        - 'metadata' (optional): Additional metadata dict (can include 'doc_name' for human-readable names)
 
         Key Features:
         - URL Fetching: Automatically fetches content from http:// or https:// URLs
@@ -840,9 +842,8 @@ async def create_mcp_server() -> FastMCP:
                 details={"database": database, "error": str(e)},
             )
 
-        # Refresh collection info after write
+        # Get collection info for embedding model details
         post_info: dict[str, Any] | None = None
-        collection_total_docs = None
         try:
             ok, post_info_any = await run_with_timeout(
                 db.get_collection_info(collection),
@@ -850,28 +851,14 @@ async def create_mcp_server() -> FastMCP:
                 get_timeout("get_collection_info"),
             )
             post_info = cast("dict[str, Any]", post_info_any) if ok else None
-            if post_info:
-                collection_total_docs = post_info.get("document_count")
         except Exception:
             post_info = None
 
-        # Build a sample query suggestion
-        sample_query = "What is this collection about?"
-        try:
-            # Take first non-empty document text and use first few words as query
-            for d in documents:
-                t = (d or {}).get("text") or ""
-                if t:
-                    words = t.strip().split()
-                    if words:
-                        sample_query = " ".join(words[:8])
-                        break
-        except Exception:
-            pass
-
-        # Extract stats
+        # Extract stats - backend returns "chunks", not "chunks_written"
         chunks_created = (
-            stats.get("chunks_written", 0) if isinstance(stats, dict) else 0
+            stats.get("chunks", stats.get("chunks_written", 0))
+            if isinstance(stats, dict)
+            else 0
         )
         embedding_model = (
             (post_info or {}).get("embedding_details", {}).get("name", "unknown")
@@ -882,13 +869,15 @@ async def create_mcp_server() -> FastMCP:
             (post_info or {}).get("name", collection) if post_info else collection
         )
 
+        # Extract document IDs from stats if available
+        document_ids = stats.get("document_ids", []) if isinstance(stats, dict) else []
+
         return documents_written_response(
             collection=collection_name,
             documents_written=len(documents),
             chunks_created=chunks_created,
             embedding_model=embedding_model,
-            collection_total_documents=collection_total_docs,
-            sample_query=sample_query,
+            document_ids=document_ids,
         )
 
     @app.tool()
@@ -1726,13 +1715,21 @@ async def create_mcp_server() -> FastMCP:
             if "config" in emb and emb["config"]:
                 data["embedding"]["config"] = emb["config"]
 
-        # Add chunking details
-        if "chunking_config" in info:
-            chunk = info["chunking_config"]
+        # Add chunking details (check both "chunking_config" and "chunking" keys)
+        chunk_info = info.get("chunking_config") or info.get("chunking")
+        if chunk_info:
             data["chunking"] = {
-                "strategy": chunk.get("strategy", "unknown"),
-                "chunk_size": chunk.get("chunk_size"),
-                "overlap": chunk.get("overlap"),
+                "strategy": chunk_info.get("strategy", "unknown"),
+                "chunk_size": chunk_info.get("chunk_size"),
+                "overlap": chunk_info.get("overlap"),
+            }
+        else:
+            # If no chunking config stored, show default (Phase 8.5 default is Sentence)
+            data["chunking"] = {
+                "strategy": "Sentence",
+                "chunk_size": 512,
+                "overlap": 0,
+                "note": "Default chunking configuration (not explicitly set during collection creation)",
             }
 
         # Add timestamps if available
@@ -1862,7 +1859,7 @@ async def create_mcp_server() -> FastMCP:
                         "database": database,
                         "existing_collections": existing_collections,
                     },
-                    suggestion=f"Use a different name or delete the existing collection: delete_collection(collection='{collection}', force=True)",
+                    suggestion=f"Collection already exists. To add documents to it, use: write_document(collection='{collection}', text='...', document_name='...'). To replace it, first delete: delete_collection(collection='{collection}', force=True)",
                 )
 
             # Create the collection using the create_collection method

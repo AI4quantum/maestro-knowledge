@@ -330,10 +330,15 @@ class MilvusVectorDatabase(VectorDatabase):
                 raise ValueError("CUSTOM_EMBEDDING_VECTORSIZE must be a valid integer.")
 
         # Save chunking config for collection-level metadata
+        # Phase 8.5: Default to Sentence chunking (512 chars, 0 overlap) instead of None
+        default_chunking = {
+            "strategy": "Sentence",
+            "parameters": {"chunk_size": 512, "overlap": 0},
+        }
         self._collections_metadata[collection_name] = {
             "embedding": embedding,
             "vector_size": None,  # filled below
-            "chunking": chunking_config or {"strategy": "None", "parameters": {}},
+            "chunking": chunking_config or default_chunking,
         }
 
         # Determine dimension based on embedding model

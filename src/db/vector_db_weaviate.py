@@ -175,9 +175,14 @@ class WeaviateVectorDatabase(VectorDatabase):
         # Track collection metadata including chunking
         if not hasattr(self, "_collections_metadata"):
             self._collections_metadata = {}
+        # Phase 8.5: Default to Sentence chunking (512 chars, 0 overlap) instead of None
+        default_chunking = {
+            "strategy": "Sentence",
+            "parameters": {"chunk_size": 512, "overlap": 0},
+        }
         target_meta = {
             "embedding": embedding,
-            "chunking": chunking_config or {"strategy": "None", "parameters": {}},
+            "chunking": chunking_config or default_chunking,
         }
         self._collections_metadata[collection_name] = target_meta
 
