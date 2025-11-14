@@ -1307,23 +1307,55 @@ async def create_mcp_server() -> FastMCP:
             default=False,
             description="Include list of supported chunking strategies in the response",
         ),
+        include_collections: bool = Field(
+            default=False,
+            description="Include detailed information about each collection including their embedding configurations",
+        ),
     ) -> str:
-        """
-        Get system configuration about the vector database backend.
+        """Get system-wide configuration and capabilities.
 
         Returns backend type (Milvus/Weaviate), collections count, and total document count.
-        Optionally includes supported embedding models when include_embeddings=True.
-        Optionally includes supported chunking strategies when include_chunking=True.
+
+        Optionally includes:
+        - Supported embedding models (include_embeddings=True) - Shows what embeddings are available
+        - Supported chunking strategies (include_chunking=True) - Shows chunking options
+        - Collection summaries (include_collections=True) - Brief overview of all collections
+
+        IMPORTANT: To get detailed embedding configuration for a SPECIFIC collection,
+        use get_collection(collection="name") instead. That tool provides:
+        - Exact embedding model being used
+        - Custom embedding configuration (URL, model name, API keys)
+        - Vector dimensions
+        - Document counts
+
+        Use get_config() for:
+        - Discovering what embedding models are supported
+        - Seeing custom embedding environment configuration
+        - Getting an overview of all collections
+
+        Use get_collection() for:
+        - Getting embedding details for a specific collection
+        - Seeing what model a collection actually uses
         """
-        # Internal: database defaults to first registered
+        # Internal: database defaults to first registered (excluding _health_check)
         database: str | None = None
         if database is None:
             database = get_default_database_name()
-            if database is None:
+            # Skip _health_check database if it's the only one
+            if database == "_health_check" and len(vector_databases) > 1:
+                # Find first non-health-check database
+                for db_name in vector_databases:
+                    if db_name != "_health_check":
+                        database = db_name
+                        break
+
+            if database is None or (
+                database == "_health_check" and len(vector_databases) == 1
+            ):
                 return error_response(
-                    error_code="NO_DATABASES",
-                    message="No databases registered",
-                    suggestion="Register a database first: register_database(database='name', database_type='milvus')",
+                    error_code="NO_COLLECTIONS",
+                    message="No collections registered yet",
+                    suggestion="Create a collection first: create_collection(collection='name')",
                 )
             logger.info(
                 f"Database parameter not provided, using first registered database: {database}"
@@ -1355,6 +1387,20 @@ async def create_mcp_server() -> FastMCP:
         if include_embeddings:
             embeddings = db.supported_embeddings()
             data["supported_embeddings"] = embeddings
+
+            # Add custom embedding environment configuration if present
+            custom_url = os.getenv("CUSTOM_EMBEDDING_URL")
+            custom_model = os.getenv("CUSTOM_EMBEDDING_MODEL")
+            custom_size = os.getenv("CUSTOM_EMBEDDING_VECTORSIZE")
+
+            if custom_url or custom_model or custom_size:
+                data["custom_embedding_config"] = {
+                    "url": custom_url,
+                    "model": custom_model,
+                    "vector_size": custom_size,
+                    "configured": bool(custom_url and custom_model and custom_size),
+                    "note": "This is the environment configuration. Use get_collection(collection='name') to see which collections actually use this configuration.",
+                }
 
         if include_chunking:
             # Keep this in sync with the src/chunking/ package defaults
@@ -1410,6 +1456,53 @@ async def create_mcp_server() -> FastMCP:
                 "strategies": strategies,
                 "notes": defaults_behavior,
             }
+
+        # Add detailed collection information if requested
+        if include_collections and collections:
+            collection_details = []
+            for coll_name in collections:
+                try:
+                    ok_info, info_any = await run_with_timeout(
+                        db.get_collection_info(coll_name),
+                        "get_collection_info",
+                        get_timeout("get_collection_info"),
+                    )
+                    if ok_info and isinstance(info_any, dict):
+                        info = cast("dict[str, Any]", info_any)
+                        coll_data: dict[str, Any] = {
+                            "name": coll_name,
+                        }
+
+                        # Add embedding details
+                        if "embedding_details" in info:
+                            emb = info["embedding_details"]
+                            coll_data["embedding"] = {
+                                "model": emb.get("name", "unknown"),
+                                "provider": emb.get("provider", "unknown"),
+                                "vector_size": emb.get("vector_size"),
+                            }
+                            # Add custom embedding config if present
+                            if emb.get("config"):
+                                coll_data["embedding"]["config"] = emb["config"]
+
+                        # Add document/chunk counts
+                        if "document_count" in info:
+                            coll_data["document_count"] = info["document_count"]
+                        if "chunk_count" in info:
+                            coll_data["chunk_count"] = info["chunk_count"]
+
+                        # Add chunking config if present
+                        if "chunking_config" in info:
+                            coll_data["chunking_config"] = info["chunking_config"]
+
+                        collection_details.append(coll_data)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to get info for collection '{coll_name}': {e}"
+                    )
+                    collection_details.append({"name": coll_name, "error": str(e)})
+
+            data["collections"] = collection_details
 
         return success_response(
             message=f"Database '{database}' information",
@@ -1535,7 +1628,25 @@ async def create_mcp_server() -> FastMCP:
             description="Include document count in the response",
         ),
     ) -> str:
-        """Get information about a collection in a vector database."""
+        """Get detailed information about a specific collection.
+
+        This is the PRIMARY tool for getting embedding configuration for a collection.
+
+        Returns:
+        - Collection name
+        - Embedding model details (model name, provider, vector size, custom config)
+        - Document and chunk counts
+        - Chunking configuration
+        - Timestamps (created_at, last_updated)
+
+        Use this tool when you need to know:
+        - What embedding model a collection uses
+        - Custom embedding configuration (URL, model name, etc.)
+        - How many documents are in the collection
+        - What chunking strategy is configured
+
+        Example: get_collection(collection="mydocs")
+        """
         # Internal: database defaults to collection name or first registered
         database: str | None = None
         if database is None:
@@ -1608,8 +1719,12 @@ async def create_mcp_server() -> FastMCP:
                 "provider": emb.get("provider", "unknown"),
                 "vector_size": emb.get("vector_size"),
             }
+            # Add custom embedding URL if present
             if "url" in emb:
                 data["embedding"]["url"] = emb["url"]
+            # Add full custom embedding config if present
+            if "config" in emb and emb["config"]:
+                data["embedding"]["config"] = emb["config"]
 
         # Add chunking details
         if "chunking_config" in info:
