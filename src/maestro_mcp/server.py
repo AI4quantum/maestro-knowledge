@@ -730,7 +730,9 @@ async def create_mcp_server() -> FastMCP:
         Each document in the 'documents' list should be a dict with:
         - 'text' (required): Document content
         - 'url' (optional): Source URL or identifier (recommended for document identification)
-        - 'metadata' (optional): Additional metadata dict (can include 'doc_name' for human-readable names)
+        - 'metadata' (optional): Additional metadata dict with custom fields for filtering/organization
+          You can add ANY custom fields here (e.g., author, category, version, status, tags)
+          These fields can later be used for filtering in list_documents and search operations
 
         Key Features:
         - URL Fetching: Automatically fetches content from http:// or https:// URLs
@@ -894,6 +896,11 @@ async def create_mcp_server() -> FastMCP:
     ) -> str:
         """Delete documents from a collection in a vector database by their IDs.
 
+        Document IDs can be obtained from:
+        - write_documents response (document_ids field)
+        - list_documents results (document_id field in each document)
+        - get_document response (document_id field)
+
         Safety: By default (force=False), this operation requires explicit confirmation.
         Set force=True to proceed with deletion.
 
@@ -958,7 +965,14 @@ async def create_mcp_server() -> FastMCP:
             ..., description="Unique identifier of the document to retrieve"
         ),
     ) -> str:
-        """Get a specific document by ID from a collection in a vector database."""
+        """Get a specific document by ID from a collection in a vector database.
+
+        The document_id is returned when you write documents (in the response's document_ids field)
+        or when you list documents (as the document_id field in each document object).
+
+        This retrieves the full document with all its text content and metadata, reassembled
+        from all chunks if the document was split during ingestion.
+        """
         # Internal: database defaults to collection name
         database: str | None = None
         if database is None:
@@ -1076,9 +1090,10 @@ async def create_mcp_server() -> FastMCP:
         - collection: Collection name (required)
         - limit: Max results to return (1-100, default 10)
         - offset: Skip this many documents for pagination (default 0)
-        - name_filter: Filter by document name substring
-        - url_filter: Filter by URL substring
-        - metadata_filters: Filter by metadata fields (all must match)
+        - name_filter: Filter by document name substring (case-insensitive partial match)
+        - url_filter: Filter by URL substring (case-insensitive partial match)
+        - metadata_filters: Filter by exact metadata field values (ALL conditions must match)
+          Example: {"language": "python", "status": "published"}
 
         Returns:
         JSON response with:
@@ -2108,7 +2123,9 @@ async def create_mcp_server() -> FastMCP:
         - limit: Maximum number of results (default: 5)
         - collection: Optional collection name (uses first registered if not provided)
         - min_score: Minimum similarity score threshold (0-1, optional)
-        - metadata_filters: Filter by metadata fields (dict, optional)
+        - metadata_filters: Filter by exact metadata field values (ALL conditions must match)
+          Can use any custom metadata fields added during write_documents.
+          Example: {"category": "tutorial", "level": "beginner"}
 
         Results include:
         - text: The document text content
