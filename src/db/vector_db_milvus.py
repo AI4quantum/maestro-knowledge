@@ -912,11 +912,21 @@ class MilvusVectorDatabase(VectorDatabase):
                 if not isinstance(metadata, dict):
                     metadata = {}
                 doc_id = metadata.get("document_id")
+
+                # Handle legacy chunks without document_id
                 if not doc_id:
-                    logger.warning(
-                        f"DEBUG: Chunk without document_id: {chunk.get('url', 'N/A')}"
-                    )
-                    continue  # Skip chunks without document_id
+                    # Generate synthetic document_id from URL for legacy data
+                    url = chunk.get("url", "")
+                    if url:
+                        # Use URL as synthetic document_id for legacy chunks
+                        doc_id = f"legacy_{url}"
+                        logger.debug(
+                            f"Generated synthetic doc_id for legacy chunk: {doc_id}"
+                        )
+                    else:
+                        # Skip chunks with no document_id and no URL
+                        logger.warning("Chunk has no document_id and no URL, skipping")
+                        continue
 
                 if doc_id not in docs_by_id:
                     docs_by_id[doc_id] = {
@@ -975,7 +985,7 @@ class MilvusVectorDatabase(VectorDatabase):
             return []
 
     async def count_documents(self) -> int:
-        """Get the current count of documents in the collection."""
+        """Get the current count of unique documents in the collection."""
         self._ensure_client()
         if self.client is None:
             warnings.warn("Milvus client is not available. Returning 0.")
@@ -987,11 +997,38 @@ class MilvusVectorDatabase(VectorDatabase):
             return 0
 
         try:
-            # Get collection statistics
-            stats = await self.client.get_collection_stats(self.collection_name)
-            return stats.get("row_count", 0)
+            # Ensure collection is loaded
+            try:
+                if hasattr(self.client, "load_collection"):
+                    await self.client.load_collection(self.collection_name)
+            except Exception:
+                pass
+
+            # Query all chunks and count unique document_ids
+            results = await self.client.query(
+                self.collection_name,
+                filter="id > 0",  # PK-indexed filter - reliable and efficient
+                output_fields=["url", "metadata"],
+                limit=16384,  # High limit to get all chunks
+            )
+
+            # Count unique document_ids (including legacy chunks)
+            unique_doc_ids = set()
+            for chunk in results:
+                metadata = chunk.get("metadata", {})
+                if isinstance(metadata, dict):
+                    doc_id = metadata.get("document_id")
+                    # Handle legacy chunks without document_id
+                    if not doc_id:
+                        url = chunk.get("url", "")
+                        if url:
+                            doc_id = f"legacy_{url}"
+                    if doc_id:
+                        unique_doc_ids.add(doc_id)
+
+            return len(unique_doc_ids)
         except Exception as e:
-            warnings.warn(f"Could not get collection stats: {e}")
+            warnings.warn(f"Could not count documents: {e}")
             return 0
 
     async def list_collections(self) -> list[str]:
@@ -1064,7 +1101,7 @@ class MilvusVectorDatabase(VectorDatabase):
             return []
 
     async def count_documents_in_collection(self, collection_name: str) -> int:
-        """Get the current count of documents in a specific collection in Milvus."""
+        """Get the current count of unique documents in a specific collection in Milvus."""
         self._ensure_client()
         if self.client is None:
             warnings.warn("Milvus client is not available. Returning 0.")
@@ -1075,13 +1112,43 @@ class MilvusVectorDatabase(VectorDatabase):
             if not await self.client.has_collection(collection_name):
                 return 0
 
-            # Get collection statistics for the specific collection
-            stats = await self.client.get_collection_stats(collection_name)
-            return stats.get("row_count", 0)
-        except Exception as e:
-            warnings.warn(
-                f"Could not get collection stats for '{collection_name}': {e}"
+            # Ensure collection is loaded
+            try:
+                if hasattr(self.client, "load_collection"):
+                    await self.client.load_collection(collection_name)
+            except Exception:
+                pass
+
+            # Query all chunks and count unique document_ids
+            results = await self.client.query(
+                collection_name,
+                filter="id > 0",  # PK-indexed filter - reliable and efficient
+                output_fields=["url", "metadata"],
+                limit=16384,  # High limit to get all chunks
             )
+
+            # Count unique document_ids (including legacy chunks)
+            unique_doc_ids = set()
+            for chunk in results:
+                metadata = chunk.get("metadata", {})
+                if isinstance(metadata, dict):
+                    doc_id = metadata.get("document_id")
+                    # Handle legacy chunks without document_id
+                    if not doc_id:
+                        url = chunk.get("url", "")
+                        if url:
+                            doc_id = f"legacy_{url}"
+                    if doc_id:
+                        unique_doc_ids.add(doc_id)
+                        url = chunk.get("url", "")
+                        if url:
+                            doc_id = f"legacy_{url}"
+                    if doc_id:
+                        unique_doc_ids.add(doc_id)
+
+            return len(unique_doc_ids)
+        except Exception as e:
+            warnings.warn(f"Could not count documents for '{collection_name}': {e}")
             return 0
 
     async def get_collection_info(
@@ -1172,14 +1239,38 @@ class MilvusVectorDatabase(VectorDatabase):
                     "metadata": {"error": "Collection does not exist"},
                 }
 
-            # Get collection statistics
-            stats = await self.client.get_collection_stats(target_collection)
+            # Count unique documents instead of total chunks
             try:
-                if isinstance(stats, dict):
-                    document_count = stats.get("row_count", 0)
-                else:
-                    # Some clients may return an object; try attribute access
-                    document_count = getattr(stats, "row_count", 0)
+                # Ensure collection is loaded
+                try:
+                    if hasattr(self.client, "load_collection"):
+                        await self.client.load_collection(target_collection)
+                except Exception:
+                    pass
+
+                # Query all chunks and count unique document_ids
+                results = await self.client.query(
+                    target_collection,
+                    filter="id > 0",  # PK-indexed filter - reliable and efficient
+                    output_fields=["url", "metadata"],
+                    limit=16384,  # High limit to get all chunks
+                )
+
+                # Count unique document_ids (including legacy chunks)
+                unique_doc_ids = set()
+                for chunk in results:
+                    metadata = chunk.get("metadata", {})
+                    if isinstance(metadata, dict):
+                        doc_id = metadata.get("document_id")
+                        # Handle legacy chunks without document_id
+                        if not doc_id:
+                            url = chunk.get("url", "")
+                            if url:
+                                doc_id = f"legacy_{url}"
+                        if doc_id:
+                            unique_doc_ids.add(doc_id)
+
+                document_count = len(unique_doc_ids)
             except Exception:
                 document_count = 0
 
