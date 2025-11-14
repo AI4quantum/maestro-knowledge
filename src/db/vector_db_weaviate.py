@@ -388,37 +388,96 @@ class WeaviateVectorDatabase(VectorDatabase):
         return await self.write_documents(documents, collection_name)
 
     async def list_documents(
-        self, limit: int = 10, offset: int = 0
+        self,
+        limit: int = 10,
+        offset: int = 0,
+        name_filter: str | None = None,
+        url_filter: str | None = None,
+        metadata_filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        """List documents from Weaviate."""
+        """List unique documents from Weaviate (one entry per document, not per chunk).
+
+        Returns document-level information including document_id, URL, name, and chunk count.
+        Does not return full text content.
+
+        Args:
+            limit: Maximum number of documents to return
+            offset: Number of documents to skip (for pagination)
+            name_filter: Optional substring to filter by document name (case-insensitive)
+            url_filter: Optional substring to filter by URL (case-insensitive)
+            metadata_filters: Optional dictionary of metadata field filters. Only documents matching ALL filters are returned.
+        """
         collection = await self.client.collections.get(self.collection_name)
 
-        # Query the collection
+        # Query all chunks to aggregate by document_id
         result = await collection.query.fetch_objects(
-            limit=limit,
-            offset=offset,
-            include_vector=False,  # Don't include vector data in response
+            limit=10000,  # Get all chunks to deduplicate
+            include_vector=False,
         )
 
-        # Process the results
-        documents = []
+        # Group chunks by document_id and store full metadata
+        docs_by_id: dict[str, dict[str, Any]] = {}
         for obj in result.objects:
-            doc = {
-                "id": obj.uuid,
-                "url": obj.properties.get("url", ""),
-                "text": obj.properties.get("text", ""),
-                "metadata": obj.properties.get("metadata", "{}"),
-            }
+            metadata_str = obj.properties.get("metadata", "{}")
 
             # Try to parse metadata if it's a JSON string
             try:
-                doc["metadata"] = json.loads(doc["metadata"])
+                parsed_metadata = json.loads(metadata_str)
             except json.JSONDecodeError:
-                pass
+                parsed_metadata = {}
 
-            documents.append(doc)
+            doc_id = (
+                parsed_metadata.get("document_id")
+                if isinstance(parsed_metadata, dict)
+                else None
+            )
+            if not doc_id:
+                continue  # Skip chunks without document_id
 
-        return documents
+            if doc_id not in docs_by_id:
+                docs_by_id[doc_id] = {
+                    "document_id": doc_id,
+                    "url": obj.properties.get("url", ""),
+                    "name": parsed_metadata.get("doc_name", ""),
+                    "chunks": 0,
+                    "metadata": parsed_metadata,  # Store full metadata for filtering
+                }
+            docs_by_id[doc_id]["chunks"] += 1
+
+        # Convert to list
+        all_docs = list(docs_by_id.values())
+
+        # Apply filters if provided
+        if name_filter:
+            name_lower = name_filter.lower()
+            all_docs = [d for d in all_docs if name_lower in d["name"].lower()]
+
+        if url_filter:
+            url_lower = url_filter.lower()
+            all_docs = [d for d in all_docs if url_lower in d["url"].lower()]
+
+        # Apply metadata filters if provided
+        if metadata_filters:
+            filtered_docs = []
+            for doc in all_docs:
+                doc_metadata = doc.get("metadata", {})
+                # Check if all filter conditions match
+                matches_all = all(
+                    doc_metadata.get(key) == value
+                    for key, value in metadata_filters.items()
+                )
+                if matches_all:
+                    filtered_docs.append(doc)
+            all_docs = filtered_docs
+
+        # Remove metadata from final output (it was only needed for filtering)
+        for doc in all_docs:
+            doc.pop("metadata", None)
+
+        # Apply pagination
+        start_idx = offset
+        end_idx = offset + limit
+        return all_docs[start_idx:end_idx]
 
     async def list_documents_in_collection(
         self, collection_name: str, limit: int = 10, offset: int = 0
@@ -438,18 +497,27 @@ class WeaviateVectorDatabase(VectorDatabase):
             # Process the results
             documents = []
             for obj in result.objects:
+                metadata_str = obj.properties.get("metadata", "{}")
+
+                # Try to parse metadata if it's a JSON string
+                try:
+                    parsed_metadata = json.loads(metadata_str)
+                except json.JSONDecodeError:
+                    parsed_metadata = {}
+
                 doc = {
                     "id": obj.uuid,
                     "url": obj.properties.get("url", ""),
                     "text": obj.properties.get("text", ""),
-                    "metadata": obj.properties.get("metadata", "{}"),
+                    "metadata": parsed_metadata,
                 }
 
-                # Try to parse metadata if it's a JSON string
-                try:
-                    doc["metadata"] = json.loads(doc["metadata"])
-                except json.JSONDecodeError:
-                    pass
+                # Extract document_id from metadata if present
+                if (
+                    isinstance(parsed_metadata, dict)
+                    and "document_id" in parsed_metadata
+                ):
+                    doc["document_id"] = parsed_metadata["document_id"]
 
                 documents.append(doc)
 
@@ -476,21 +544,27 @@ class WeaviateVectorDatabase(VectorDatabase):
             return 0
 
     async def get_document(
-        self, doc_name: str, collection_name: str | None = None
+        self, document_id: str, collection_name: str | None = None
     ) -> dict[str, Any]:
-        """Reassemble a document from its chunks by doc_name."""
+        """Reassemble a document from its chunks by document_id.
+
+        Args:
+            document_id: The document ID (from metadata) to retrieve
+            collection_name: Optional collection name, uses default if not provided
+
+        Returns:
+            Dictionary with reassembled document including text, url, and metadata
+        """
         target_collection = collection_name or self.collection_name
         # Ensure collection exists
         if not await self.client.collections.exists(target_collection):
             raise ValueError(f"Collection '{target_collection}' not found")
 
-        # Fetch all objects with metadata containing the doc_name
+        # Fetch all objects with metadata containing the document_id
         collection = await self.client.collections.get(target_collection)
-        filter_property = await collection.query.filter.by_property("metadata")
-        filter_condition = await filter_property.contains_any([doc_name])
         result = await collection.query.fetch_objects(
-            where=filter_condition,
             limit=10000,
+            include_vector=False,
         )
 
         chunks = []
@@ -501,7 +575,10 @@ class WeaviateVectorDatabase(VectorDatabase):
                     metadata = json.loads(metadata)
                 except Exception:
                     metadata = {}
-            if isinstance(metadata, dict) and metadata.get("doc_name") == doc_name:
+            if (
+                isinstance(metadata, dict)
+                and metadata.get("document_id") == document_id
+            ):
                 chunks.append(
                     {
                         "id": obj.uuid,
@@ -515,20 +592,27 @@ class WeaviateVectorDatabase(VectorDatabase):
         if doc is None:
             # If no chunks or unable to reassemble, raise document-not-found with collection context
             raise ValueError(
-                f"Document '{doc_name}' not found in collection '{target_collection}'"
+                f"Document with ID '{document_id}' not found in collection '{target_collection}'"
             )
         return doc
 
     async def get_document_chunks(
-        self, doc_id: str, collection_name: str | None = None
+        self, document_id: str, collection_name: str | None = None
     ) -> list[dict[str, Any]]:
+        """Retrieve all chunks for a specific document by document_id.
+
+        Args:
+            document_id: The document ID (from metadata) to retrieve chunks for
+            collection_name: Optional collection name, uses default if not provided
+
+        Returns:
+            List of chunk dictionaries with id, url, text, and metadata
+        """
         target_collection = collection_name or self.collection_name
         collection = await self.client.collections.get(target_collection)
-        filter_property = await collection.query.filter.by_property("metadata")
-        filter_condition = await filter_property.contains_any([doc_id])
         result = await collection.query.fetch_objects(
-            where=filter_condition,
             limit=10000,
+            include_vector=False,
         )
         chunks = []
         for obj in result.objects:
@@ -538,7 +622,10 @@ class WeaviateVectorDatabase(VectorDatabase):
                     metadata = json.loads(metadata)
                 except Exception:
                     metadata = {}
-            if isinstance(metadata, dict) and metadata.get("doc_name") == doc_id:
+            if (
+                isinstance(metadata, dict)
+                and metadata.get("document_id") == document_id
+            ):
                 chunks.append(
                     {
                         "id": obj.uuid,
@@ -797,13 +884,32 @@ class WeaviateVectorDatabase(VectorDatabase):
             }
 
     async def delete_documents(self, document_ids: list[str]) -> None:
-        """Delete documents from Weaviate by their IDs."""
+        """Delete documents from Weaviate by their document_ids.
+
+        Args:
+            document_ids: List of document IDs (from metadata) to delete.
+                         All chunks with matching document_id will be deleted.
+        """
         collection = await self.client.collections.get(self.collection_name)
 
-        # Delete documents by UUID
+        # Delete all chunks for each document_id
         for doc_id in document_ids:
             try:
-                await collection.data.delete_by_id(doc_id)
+                # Query for all objects with this document_id in metadata
+                result = await collection.query.fetch_objects(
+                    limit=10000,  # Get all chunks for this document
+                    include_vector=False,
+                )
+
+                # Find and delete all chunks with matching document_id
+                for obj in result.objects:
+                    metadata_str = obj.properties.get("metadata", "{}")
+                    try:
+                        metadata = json.loads(metadata_str)
+                        if metadata.get("document_id") == doc_id:
+                            await collection.data.delete_by_id(obj.uuid)
+                    except json.JSONDecodeError:
+                        continue
             except Exception as e:
                 warnings.warn(f"Failed to delete document {doc_id}: {e}")
 
@@ -818,52 +924,6 @@ class WeaviateVectorDatabase(VectorDatabase):
                     self.collection_name = None
         except Exception as e:
             warnings.warn(f"Failed to delete collection {target_collection}: {e}")
-
-    # TODO: Type needs consideration
-
-    def create_query_agent(self) -> "QueryAgent":
-        """Create a Weaviate query agent."""
-        from weaviate.agents.query import QueryAgent
-
-        return QueryAgent(client=self.client, collections=[self.collection_name])
-
-    async def query(
-        self, query: str, limit: int = 5, collection_name: str | None = None
-    ) -> str:
-        """
-        Query the vector database using Weaviate's vector similarity search.
-
-        Args:
-            query: The query string to search for
-            limit: Maximum number of results to consider
-            collection_name: Optional collection name to search in (defaults to self.collection_name)
-
-        Returns:
-            A string response with relevant information from the database
-        """
-        try:
-            # Use vector similarity search as the primary method
-            documents = await self.search(query, limit, collection_name)
-
-            if not documents:
-                return f"No relevant documents found for query: '{query}'"
-
-            # Format the results
-            response_parts = [
-                f"Found {len(documents)} relevant documents for query: '{query}'\n\n"
-            ]
-
-            for i, doc in enumerate(documents, 1):
-                response_parts.append(f"Document {i}:")
-                response_parts.append(f"  URL: {doc.get('url', 'N/A')}")
-                response_parts.append(f"  Text: {doc.get('text', 'N/A')[:200]}...")
-                response_parts.append("")
-
-            return "\n".join(response_parts)
-
-        except Exception as e:
-            warnings.warn(f"Failed to query Weaviate: {e}")
-            return f"Error querying database: {str(e)}"
 
     async def search(
         self,

@@ -238,18 +238,6 @@ async def run_query_operations_tests(client: Client, backend_name: str) -> None:
     response = parse_response(res)
     assert response["status"] == "success", f"search failed: {response}"
 
-    # Test query (intelligent query with reasoning)
-    res = await client.call_tool(
-        "query",
-        {
-            "collection": collection_name,
-            "query": "What is machine learning?",
-            "limit": 1,
-        },
-    )
-    response = parse_response(res)
-    assert response["status"] == "success", f"query failed: {response}"
-
     # Cleanup
     res = await client.call_tool(
         "delete_collection", {"collection": collection_name, "force": True}

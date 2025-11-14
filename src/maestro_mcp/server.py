@@ -72,7 +72,6 @@ TIMEOUT_DEFAULTS: dict[str, int] = {
     "count_documents": 15,
     "get_database_info": 15,
     "get_collection_info": 30,
-    "query": 30,
     "search": 30,
     "write_single": 900,  # 15 minutes
     "write_bulk": 3600,  # 60 minutes
@@ -1042,6 +1041,146 @@ async def create_mcp_server() -> FastMCP:
             )
 
     @app.tool()
+    async def list_documents(
+        collection: str = Field(
+            ..., description="Name of the collection to list documents from"
+        ),
+        limit: int = Field(
+            default=10,
+            description="Maximum number of documents to return (1-100)",
+            ge=1,
+            le=100,
+        ),
+        offset: int = Field(
+            default=0, description="Number of documents to skip for pagination", ge=0
+        ),
+        name_filter: str | None = Field(
+            default=None,
+            description="Optional substring to filter by document name (case-insensitive)",
+        ),
+        url_filter: str | None = Field(
+            default=None,
+            description="Optional substring to filter by URL (case-insensitive)",
+        ),
+        metadata_filters: dict[str, Any] | None = Field(
+            default=None,
+            description="Optional dictionary of metadata field filters. Only documents matching ALL filters are returned. Example: {'doc_type': 'technical', 'language': 'python'}",
+        ),
+    ) -> str:
+        """List documents in a collection with optional filtering.
+
+        Returns a paginated list of documents with their IDs, names, URLs, and chunk counts.
+        Use this to browse and discover documents in a collection.
+
+        Parameters:
+        - collection: Collection name (required)
+        - limit: Max results to return (1-100, default 10)
+        - offset: Skip this many documents for pagination (default 0)
+        - name_filter: Filter by document name substring
+        - url_filter: Filter by URL substring
+        - metadata_filters: Filter by metadata fields (all must match)
+
+        Returns:
+        JSON response with:
+        - status: "success" or "error"
+        - message: Operation summary
+        - data:
+          - documents: List of document objects with:
+            - document_id: Unique document identifier
+            - name: Document name
+            - url: Document URL
+            - chunks: Number of chunks
+          - total_returned: Number of documents in this response
+          - limit: Limit used
+          - offset: Offset used
+
+        Common errors:
+        - NO_DATABASES: No collections registered
+        - COLL_NOT_FOUND: Collection doesn't exist
+        - LIST_FAILED: Failed to list documents
+
+        Example: list_documents(collection="docs", limit=20, name_filter="python")
+        """
+        # Internal: database defaults to collection name
+        database: str | None = None
+        if database is None:
+            database = collection
+            logger.info(
+                f"Database parameter not provided, defaulting to collection name: {database}"
+            )
+
+        db = get_database_by_name(database)
+
+        # Check if the collection exists
+        ok, collections_any = await run_with_timeout(
+            db.list_collections(), "list_collections", get_timeout("list_collections")
+        )
+        collections = (
+            cast("list[str]", collections_any)
+            if ok and isinstance(collections_any, list)
+            else []
+        )
+        if collection not in collections:
+            return error_response(
+                error_code="COLL_NOT_FOUND",
+                message=f"Collection '{collection}' not found",
+                details={
+                    "collection": collection,
+                    "database": database,
+                    "available_collections": collections,
+                },
+                suggestion="Check available collections: list_collections()",
+            )
+
+        try:
+            # List documents with filters
+            ok, documents_any = await run_with_timeout(
+                db.list_documents(
+                    limit=limit,
+                    offset=offset,
+                    name_filter=name_filter,
+                    url_filter=url_filter,
+                    metadata_filters=metadata_filters,
+                ),
+                "list_documents",
+                get_timeout("list_documents"),
+            )
+            if not ok:
+                return error_response(
+                    error_code="LIST_FAILED",
+                    message=f"Failed to list documents: {str(documents_any)}",
+                    details={
+                        "collection": collection,
+                        "database": database,
+                    },
+                )
+            documents: list[dict[str, Any]] = cast(
+                "list[dict[str, Any]]", documents_any
+            )
+
+            return success_response(
+                message=f"Listed {len(documents)} document(s) from collection '{collection}'",
+                data={
+                    "documents": documents,
+                    "total_returned": len(documents),
+                    "limit": limit,
+                    "offset": offset,
+                },
+                operation="list_documents",
+                database=database,
+                collection=collection,
+            )
+        except Exception as e:
+            return error_response(
+                error_code="LIST_FAILED",
+                message=f"Failed to list documents: {str(e)}",
+                details={
+                    "collection": collection,
+                    "database": database,
+                },
+            )
+
+    @app.tool()
     async def delete_collection(
         collection: str = Field(..., description="Name of the collection to delete"),
         force: bool = Field(
@@ -1935,173 +2074,6 @@ async def create_mcp_server() -> FastMCP:
                 error_code="COLL_CREATION_FAILED",
                 message=error_msg,
                 details={"database": database, "collection": collection},
-            )
-
-    @app.tool()
-    async def query(
-        query: str = Field(..., description="The query string to search for"),
-        limit: int = Field(
-            default=5, description="Maximum number of results to consider (1-100)"
-        ),
-        collection: str | None = Field(
-            default=None, description="Optional collection name to search in"
-        ),
-    ) -> str:
-        """
-        Query a vector database using semantic search with LLM summarization.
-
-        Returns a natural language summary of relevant documents, ideal for conversational
-        interfaces where you want a synthesized answer rather than raw search results.
-
-        Parameters:
-        - query: The search query string (required)
-        - limit: Number of results to consider (1-100), default 5
-        - collection: Optional collection name (uses first registered if not provided)
-
-        Returns:
-        JSON response with:
-        - status: "success" or "error"
-        - message: Operation summary
-        - data:
-          - query: The search query
-          - summary: Natural language summary of results
-          - limit: Number of results considered
-        - metadata: Timestamp, operation, database, collection
-
-        Difference from 'search':
-        - query: Returns LLM-generated natural language summary
-        - search: Returns raw results with scores, metadata, and citations
-
-        Common errors:
-        - NO_DATABASES: No collections registered - use refresh_databases()
-        - DB_NOT_FOUND: Collection doesn't exist - check with list_collections()
-        - COLL_NOT_FOUND: Collection not found - verify name
-        - PARAM_INVALID_VALUE: Limit must be between 1 and 100
-        - QUERY_FAILED: Query execution failed - check error details
-        """
-        try:
-            # Internal: database defaults to collection name or first registered
-            database: str | None = None
-            if database is None:
-                if collection is not None:
-                    database = collection
-                    logger.info(
-                        f"Database parameter not provided, defaulting to collection name: {database}"
-                    )
-                else:
-                    database = get_default_database_name()
-                    if database is None:
-                        return error_response(
-                            error_code="NO_DATABASES",
-                            message="No databases registered",
-                            suggestion="Register a database first: register_database(database='name', database_type='milvus')",
-                        )
-                    logger.info(
-                        f"Neither database nor collection provided, using first registered database: {database}"
-                    )
-
-            # Validate limit
-            if limit < 1 or limit > 100:
-                return error_response(
-                    error_code="PARAM_INVALID_VALUE",
-                    message=f"Invalid limit: {limit}. Must be between 1 and 100",
-                    details={"limit": limit, "min": 1, "max": 100},
-                    suggestion="Use a limit value between 1 and 100",
-                )
-
-            # Validate database exists
-            if database not in vector_databases:
-                available = list(vector_databases.keys())
-                return error_response(
-                    error_code="DB_NOT_FOUND",
-                    message=f"Database '{database}' not found",
-                    details={
-                        "database": database,
-                        "available_databases": available,
-                    },
-                    suggestion=f"Create the database first: create_database(database='{database}', database_type='milvus')",
-                )
-
-            db = get_database_by_name(database)
-            kwargs: dict[str, Any] = {"limit": limit}
-            if collection is not None:
-                kwargs["collection_name"] = collection
-            ok, response = await run_with_timeout(
-                db.query(query, **kwargs), "query", get_timeout("query")
-            )
-            if not ok:
-                error_str = str(response)
-                if (
-                    "collection" in error_str.lower()
-                    and "not found" in error_str.lower()
-                ):
-                    # Get available collections
-                    ok_list, colls_any = await run_with_timeout(
-                        db.list_collections(),
-                        "list_collections",
-                        get_timeout("list_collections"),
-                    )
-                    available_colls = (
-                        cast("list[str]", colls_any)
-                        if ok_list and isinstance(colls_any, list)
-                        else []
-                    )
-                    return error_response(
-                        error_code="COLL_NOT_FOUND",
-                        message=f"Collection '{collection or 'default'}' not found",
-                        details={
-                            "collection": collection or "default",
-                            "database": database,
-                            "available_collections": available_colls,
-                        },
-                        suggestion="Check available collections: list_collections()",
-                    )
-                return error_response(
-                    error_code="QUERY_FAILED",
-                    message=f"Query failed: {error_str}",
-                    details={
-                        "database": database,
-                        "query": query,
-                        "collection": collection,
-                    },
-                )
-
-            # response is expected to be a string summary
-            return success_response(
-                message=f"Query completed for '{query}'",
-                data={
-                    "query": query,
-                    "summary": str(response),
-                    "limit": limit,
-                },
-                operation="query",
-                database=database,
-                collection=collection,
-            )
-        except KeyError:
-            available = list(vector_databases.keys())
-            db_name = locals().get("database", "unknown")
-            return error_response(
-                error_code="DB_NOT_FOUND",
-                message=f"Database '{db_name}' not found",
-                details={
-                    "database": db_name,
-                    "available_databases": available,
-                },
-                suggestion=f"Create the database first: create_database(database='{db_name}', database_type='milvus')",
-            )
-        except Exception as e:
-            db_name = locals().get("database", "unknown")
-            error_msg = f"Failed to query vector database '{db_name}': {str(e)}"
-            logger.error(error_msg)
-            return error_response(
-                error_code="QUERY_FAILED",
-                message=error_msg,
-                details={
-                    "database": db_name,
-                    "query": query,
-                    "collection": collection,
-                },
             )
 
     @app.tool()

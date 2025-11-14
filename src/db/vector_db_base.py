@@ -259,17 +259,26 @@ class VectorDatabase(ABC):
 
     @abstractmethod
     async def list_documents(
-        self, limit: int = 10, offset: int = 0
+        self,
+        limit: int = 10,
+        offset: int = 0,
+        name_filter: str | None = None,
+        url_filter: str | None = None,
+        metadata_filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
-        List documents from the vector database.
+        List unique documents from the vector database (one entry per document, not per chunk).
 
         Args:
             limit: Maximum number of documents to return
-            offset: Number of documents to skip
+            offset: Number of documents to skip (for pagination)
+            name_filter: Optional substring to filter by document name (case-insensitive)
+            url_filter: Optional substring to filter by URL (case-insensitive)
+            metadata_filters: Optional dictionary of metadata field filters. Only documents matching ALL filters are returned.
+                            Example: {'doc_type': 'technical', 'language': 'python'}
 
         Returns:
-            List of documents with their properties
+            List of documents with document_id, URL, name, and chunk count
         """
         pass
 
@@ -297,13 +306,13 @@ class VectorDatabase(ABC):
 
     @abstractmethod
     async def get_document(
-        self, doc_name: str, collection_name: str | None = None
+        self, document_id: str, collection_name: str | None = None
     ) -> dict[str, Any]:
         """
-        Get a specific document by name from the vector database.
+        Get a specific document by document_id from the vector database.
 
         Args:
-            doc_name: Name of the document to retrieve
+            document_id: Document ID (from metadata) to retrieve
             collection_name: Name of the collection to search in. If None, uses the current collection.
 
         Returns:
@@ -402,29 +411,6 @@ class VectorDatabase(ABC):
         pass
 
     @abstractmethod
-    # TODO: Type needs consideration
-    def create_query_agent(self) -> "VectorDatabase":
-        """Create and return a query agent for this vector database."""
-        pass
-
-    @abstractmethod
-    async def query(
-        self, query: str, limit: int = 5, collection_name: str | None = None
-    ) -> str:
-        """
-        Query the vector database using the default query agent.
-
-        Args:
-            query: The query string to search for
-            limit: Maximum number of results to consider
-            collection_name: Optional collection name to search in
-
-        Returns:
-            A string response with relevant information from the database
-        """
-        pass
-
-    @abstractmethod
     async def search(
         self,
         query: str,
@@ -456,7 +442,7 @@ class VectorDatabase(ABC):
         pass
 
     async def get_document_chunks(
-        self, doc_id: str, collection_name: str | None = None
+        self, document_id: str, collection_name: str | None = None
     ) -> list[dict[str, Any]]:
         """
         Retrieve all chunks for a specific document.

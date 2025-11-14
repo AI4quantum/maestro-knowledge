@@ -10,6 +10,7 @@ import warnings
 from typing import Any
 
 from src.chunking import ChunkingConfig, chunk_text
+from src.db.document_id import generate_document_id
 
 # Suppress Pydantic deprecation warnings from dependencies
 warnings.filterwarnings(
@@ -432,6 +433,7 @@ class MilvusVectorDatabase(VectorDatabase):
         total_chunks = 0
         build_start = time.perf_counter()
         id_counter = 0
+        document_ids: list[str] = []  # Track document IDs for return value
 
         # Process documents to ensure they have text content
         processed_documents = []
@@ -447,9 +449,17 @@ class MilvusVectorDatabase(VectorDatabase):
                 continue
 
         for doc in processed_documents:
-            doc_start = time.perf_counter()
+            # Generate document_id for this document
             text = doc.get("text", "")
+            url = doc.get("url")
+            document_id = generate_document_id(text, url)
+            document_ids.append(document_id)
+
+            doc_start = time.perf_counter()
             orig_metadata = dict(doc.get("metadata", {}))
+
+            # Add document_id to metadata
+            orig_metadata["document_id"] = document_id
 
             # Chunk the text
             cfg = ChunkingConfig(
@@ -592,22 +602,31 @@ class MilvusVectorDatabase(VectorDatabase):
             "per_document": stats_per_doc,
             "insert_ms": insert_duration_ms,
             "duration_ms": total_duration_ms,
+            "document_ids": document_ids,  # NEW: Return list of document IDs
         }
 
     async def get_document_chunks(
-        self, doc_id: str, collection_name: str | None = None
+        self, document_id: str, collection_name: str | None = None
     ) -> list[dict[str, Any]]:
-        """Retrieve all chunks for a specific document by doc_name."""
+        """Retrieve all chunks for a specific document by document_id.
+
+        Args:
+            document_id: The document ID (from metadata) to retrieve chunks for
+            collection_name: Optional collection name, uses default if not provided
+
+        Returns:
+            List of chunk dictionaries with id, url, text, and metadata
+        """
         self._ensure_client()
         if self.client is None:
             raise ValueError("Milvus client is not available")
 
         target_collection = collection_name or self.collection_name
         try:
-            # Query for all records with matching doc_name in metadata
+            # Query for all records with matching document_id in metadata
             results = await self.client.query(
                 target_collection,
-                filter=f'metadata["doc_name"] == "{doc_id}"',
+                filter=f'metadata["document_id"] == "{document_id}"',
                 output_fields=["id", "url", "text", "metadata"],
                 # Retrieve a reasonable upper bound of chunks to allow reassembly
                 limit=10000,
@@ -630,12 +649,22 @@ class MilvusVectorDatabase(VectorDatabase):
 
             return chunks
         except Exception as e:
-            raise ValueError(f"Failed to retrieve chunks for document '{doc_id}': {e}")
+            raise ValueError(
+                f"Failed to retrieve chunks for document '{document_id}': {e}"
+            )
 
     async def get_document(
-        self, doc_name: str, collection_name: str | None = None
+        self, document_id: str, collection_name: str | None = None
     ) -> dict[str, Any]:
-        """Reassemble a document from its chunks by doc_name."""
+        """Reassemble a document from its chunks by document_id.
+
+        Args:
+            document_id: The document ID (from metadata) to retrieve
+            collection_name: Optional collection name, uses default if not provided
+
+        Returns:
+            Dictionary with reassembled document including text, url, and metadata
+        """
         # Ensure client is available
         self._ensure_client()
         if self.client is None:
@@ -646,18 +675,34 @@ class MilvusVectorDatabase(VectorDatabase):
         if not await self.client.has_collection(target_collection):
             raise ValueError(f"Collection '{target_collection}' not found")
 
-        chunks = await self.get_document_chunks(doc_name, collection_name)
+        chunks = await self.get_document_chunks(document_id, collection_name)
         doc = self._reassemble_chunks_into_document(chunks)
         if doc is None:
             raise ValueError(
-                f"Document '{doc_name}' not found in collection '{target_collection}'"
+                f"Document with ID '{document_id}' not found in collection '{target_collection}'"
             )
         return doc
 
     async def list_documents(
-        self, limit: int = 10, offset: int = 0
+        self,
+        limit: int = 10,
+        offset: int = 0,
+        name_filter: str | None = None,
+        url_filter: str | None = None,
+        metadata_filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        """List documents from Milvus."""
+        """List unique documents from Milvus (one entry per document, not per chunk).
+
+        Returns document-level information including document_id, URL, name, and chunk count.
+        Does not return full text content.
+
+        Args:
+            limit: Maximum number of documents to return
+            offset: Number of documents to skip (for pagination)
+            name_filter: Optional substring to filter by document name (case-insensitive)
+            url_filter: Optional substring to filter by URL (case-insensitive)
+            metadata_filters: Optional dictionary of metadata field filters. Only documents matching ALL filters are returned.
+        """
         self._ensure_client()
         if self.client is None:
             warnings.warn("Milvus client is not available. Returning empty list.")
@@ -669,29 +714,70 @@ class MilvusVectorDatabase(VectorDatabase):
             return []
 
         try:
-            # Query all documents, paginated
+            # Query all chunks to aggregate by document_id
             results = await self.client.query(
                 self.collection_name,
-                output_fields=["id", "url", "text", "metadata"],
-                limit=limit,
-                offset=offset,
+                output_fields=["url", "metadata"],
+                limit=10000,  # Get all chunks to deduplicate
             )
 
-            docs = []
-            for doc in results:
+            # Group chunks by document_id and store full metadata
+            docs_by_id: dict[str, dict[str, Any]] = {}
+            for chunk in results:
                 try:
-                    metadata = json.loads(doc.get("metadata", "{}"))
+                    metadata = json.loads(chunk.get("metadata", "{}"))
                 except Exception:
                     metadata = {}
-                docs.append(
-                    {
-                        "id": doc.get("id"),
-                        "url": doc.get("url", ""),
-                        "text": doc.get("text", ""),
-                        "metadata": metadata,
+
+                doc_id = metadata.get("document_id")
+                if not doc_id:
+                    continue  # Skip chunks without document_id
+
+                if doc_id not in docs_by_id:
+                    docs_by_id[doc_id] = {
+                        "document_id": doc_id,
+                        "url": chunk.get("url", ""),
+                        "name": metadata.get("doc_name", ""),
+                        "chunks": 0,
+                        "metadata": metadata,  # Store full metadata for filtering
                     }
-                )
-            return docs
+                docs_by_id[doc_id]["chunks"] += 1
+
+            # Convert to list
+            all_docs = list(docs_by_id.values())
+
+            # Apply filters if provided
+            if name_filter:
+                name_lower = name_filter.lower()
+                all_docs = [d for d in all_docs if name_lower in d["name"].lower()]
+
+            if url_filter:
+                url_lower = url_filter.lower()
+                all_docs = [d for d in all_docs if url_lower in d["url"].lower()]
+
+            # Apply metadata filters if provided
+            if metadata_filters:
+                filtered_docs = []
+                for doc in all_docs:
+                    doc_metadata = doc.get("metadata", {})
+                    # Check if all filter conditions match
+                    matches_all = all(
+                        doc_metadata.get(key) == value
+                        for key, value in metadata_filters.items()
+                    )
+                    if matches_all:
+                        filtered_docs.append(doc)
+                all_docs = filtered_docs
+
+            # Remove metadata from final output (it was only needed for filtering)
+            for doc in all_docs:
+                doc.pop("metadata", None)
+
+            # Apply pagination
+            start_idx = offset
+            end_idx = offset + limit
+            return all_docs[start_idx:end_idx]
+
         except Exception as e:
             warnings.warn(f"Could not list documents: {e}")
             return []
@@ -1093,24 +1179,27 @@ class MilvusVectorDatabase(VectorDatabase):
             }
 
     async def delete_documents(self, document_ids: list[str]) -> None:
-        """Delete documents from Milvus by their IDs."""
+        """Delete documents from Milvus by their document_ids.
+
+        Args:
+            document_ids: List of document IDs (from metadata) to delete.
+                         All chunks with matching document_id will be deleted.
+        """
         self._ensure_client()
         if self.client is None:
             warnings.warn("Milvus client is not available. Documents not deleted.")
             return
 
-        # Convert string IDs to integers for Milvus
-        try:
-            int_ids = [int(doc_id) for doc_id in document_ids]
-        except ValueError:
-            raise ValueError("Milvus document IDs must be convertible to integers.")
-
-        # Delete documents by ID
-        try:
-            await self.client.delete(self.collection_name, ids=int_ids)
-        except Exception as e:
-            # Re-raise the exception to be handled by the caller
-            raise e
+        # Delete all chunks for each document_id
+        for doc_id in document_ids:
+            try:
+                # Use filter expression to delete all chunks with this document_id
+                expr = f'metadata["document_id"] == "{doc_id}"'
+                await self.client.delete(
+                    collection_name=self.collection_name, filter=expr
+                )
+            except Exception as e:
+                warnings.warn(f"Failed to delete document {doc_id}: {e}")
 
     async def delete_collection(self, collection_name: str | None = None) -> None:
         """Delete an entire collection from Milvus."""
@@ -1125,56 +1214,6 @@ class MilvusVectorDatabase(VectorDatabase):
             await self.client.drop_collection(target_collection)
             if target_collection == self.collection_name:
                 self.collection_name = None
-
-    # TODO: Type needs consideration
-    def create_query_agent(self) -> "MilvusVectorDatabase":
-        """Create a query agent for Milvus."""
-        # Placeholder: Milvus does not have a built-in query agent like Weaviate
-        # You would implement your own search logic here
-        return self
-
-    async def query(
-        self, query: str, limit: int = 5, collection_name: str | None = None
-    ) -> str:
-        """
-        Query the vector database using Milvus vector similarity search.
-
-        Args:
-            query: The query string to search for
-            limit: Maximum number of results to consider
-
-        Returns:
-            A string response with relevant information from the database
-        """
-        try:
-            # Perform vector similarity search
-            documents = await self._search_documents(query, limit, collection_name)
-
-            if not documents:
-                return f"No relevant documents found for query: '{query}'"
-
-            # Format the response
-            response_parts = [f"Query: {query}\n"]
-            response_parts.append(f"Found {len(documents)} relevant documents:\n")
-
-            for i, doc in enumerate(documents, 1):
-                url = doc.get("url", "No URL")
-                text = doc.get("text", "No text content")
-                score = doc.get("score", "N/A")
-
-                # Truncate text if too long
-                if len(text) > 500:
-                    text = text[:500] + "..."
-
-                response_parts.append(f"\n{i}. Document (Score: {score}):")
-                response_parts.append(f"   URL: {url}")
-                response_parts.append(f"   Content: {text}")
-
-            return "\n".join(response_parts)
-
-        except Exception as e:
-            warnings.warn(f"Failed to query Milvus: {e}")
-            return f"Error querying database: {str(e)}"
 
     async def _search_documents(
         self,
@@ -1366,6 +1405,12 @@ class MilvusVectorDatabase(VectorDatabase):
                         if query_vector is not None
                         else None,
                     }
+
+                    # Extract document_id from metadata (added during write)
+                    if isinstance(clean_metadata, dict):
+                        document_id = clean_metadata.get("document_id")
+                        if document_id:
+                            doc["document_id"] = document_id
 
                     # Phase 5: Add top-level URL and source citation
                     if url:
