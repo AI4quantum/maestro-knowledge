@@ -565,10 +565,10 @@ class TestMilvusVectorDatabase:
         assert result["metadata"]["doc_name"] == "test_doc"
         assert result["metadata"]["collection_name"] == "test_collection"
 
-        # Verify the query was called with correct parameters
+        # Verify the query was called with correct parameters (using LIKE filter for VARCHAR metadata)
         mock_client.query.assert_called_once_with(
             "test_collection",
-            filter='''metadata["document_id"] == "abc123"''',
+            filter='metadata LIKE \'%"document_id": "abc123"%\'',
             output_fields=["id", "url", "text", "metadata"],
             limit=10000,
         )
