@@ -1,5 +1,8 @@
 # TODO: Collection Metadata Persistence
 
+**Status:** PARTIALLY MITIGATED (Default Fallback Added in Phase 8.6)  
+**Date Updated:** 2025-11-14
+
 ## Problem
 
 Currently, collection-level metadata (embedding configuration and chunking configuration) is stored in memory in the `_collections_metadata` instance variable of the vector database classes. This metadata is lost when:
@@ -28,7 +31,24 @@ This means that while the metadata IS stored during `create_collection()`, it's 
 - Users see default chunking config with a note instead of actual config
 
 ### Current Workaround
-The MCP server now shows default chunking configuration when metadata is not available:
+
+**Phase 8.6 Fix Applied (2025-11-14):**
+Default chunking fallback now prevents the no-chunking scenario:
+
+```python
+# In write_documents() at line ~508:
+if chunking_conf is None:
+    chunking_conf = {
+        "strategy": "Sentence",
+        "parameters": {"chunk_size": 512, "overlap": 0},
+    }
+    logger.info(f"No chunking config found for '{target_collection}', using default: Sentence(512, 0)")
+```
+
+This ensures chunking is ALWAYS applied, even after server restart when metadata is lost.
+
+**Previous Workaround (for display only):**
+The MCP server shows default chunking configuration when metadata is not available:
 ```json
 {
   "chunking": {

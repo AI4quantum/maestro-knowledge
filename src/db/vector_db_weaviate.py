@@ -1137,8 +1137,9 @@ class WeaviateVectorDatabase(VectorDatabase):
             target_collection = (
                 collection_name if collection_name is not None else self.collection_name
             )
+            # Use high limit to ensure we get all documents for keyword search
             documents = await self.list_documents_in_collection(
-                target_collection, limit=100, offset=0
+                target_collection, limit=4096, offset=0
             )
 
             query_lower = query.lower()

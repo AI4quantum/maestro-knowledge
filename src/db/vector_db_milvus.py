@@ -12,6 +12,11 @@ from typing import Any
 from src.chunking import ChunkingConfig, chunk_text
 from src.db.document_id import generate_document_id
 
+try:
+    from pymilvus import DataType
+except ImportError:
+    DataType = None
+
 # Suppress Pydantic deprecation warnings from dependencies
 warnings.filterwarnings(
     "ignore", category=DeprecationWarning, message=".*class-based `config`.*"
@@ -47,6 +52,34 @@ class MilvusVectorDatabase(VectorDatabase):
         self.embedding_model = None
         # Track collection-level metadata such as embedding, vector size, and chunking
         self._collections_metadata = {}
+        # Write serialization lock for Milvus Lite environments
+        self._write_lock = asyncio.Lock()
+        # Determine if we need write serialization based on environment
+        self._serialize_writes = self._should_serialize_writes()
+
+    def _should_serialize_writes(self) -> bool:
+        """
+        Determine if write operations should be serialized.
+
+        Write serialization prevents concurrent write issues in Milvus.
+        Defaults to enabled for safety.
+
+        Returns:
+            True if writes should be serialized, False otherwise
+        """
+        # Check for explicit environment variable override
+        serialize_env = os.getenv("MILVUS_SERIALIZE_WRITES", "true").lower()
+
+        if serialize_env == "true" or serialize_env == "1":
+            logger.debug("Write serialization enabled")
+            return True
+        elif serialize_env == "false" or serialize_env == "0":
+            logger.info("Write serialization DISABLED by environment variable")
+            return False
+
+        # Default to enabled for safety
+        logger.debug("Write serialization enabled (default)")
+        return True
 
     def supported_embeddings(self) -> list[str]:
         """
@@ -367,13 +400,51 @@ class MilvusVectorDatabase(VectorDatabase):
                 if "already exists" not in str(e).lower():
                     raise
 
-        # Create collection
-        await self.client.create_collection(
-            collection_name=collection_name,
-            dimension=dimension,
-            primary_field_name="id",
-            vector_field_name="vector",
+        # Create schema with auto-increment ID
+        if DataType is None:
+            raise RuntimeError(
+                "DataType not available - pymilvus not installed properly"
+            )
+
+        schema = self.client.create_schema()
+
+        # Primary key field with auto-increment
+        schema.add_field(
+            field_name="id", datatype=DataType.INT64, is_primary=True, auto_id=True
         )
+
+        # Vector field
+        schema.add_field(
+            field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=dimension
+        )
+
+        # Text field
+        schema.add_field(field_name="text", datatype=DataType.VARCHAR, max_length=65535)
+
+        # URL field
+        schema.add_field(field_name="url", datatype=DataType.VARCHAR, max_length=512)
+
+        # Metadata field as JSON
+        schema.add_field(field_name="metadata", datatype=DataType.JSON)
+
+        # Create collection with schema
+        await self.client.create_collection(
+            collection_name=collection_name, schema=schema
+        )
+
+        # Create index on vector field (required before loading)
+        index_params = self.client.prepare_index_params()
+        index_params.add_index(
+            field_name="vector",
+            index_type="FLAT",  # Simple flat index for small datasets
+            metric_type="COSINE",
+        )
+        await self.client.create_index(
+            collection_name=collection_name, index_params=index_params
+        )
+
+        # Load collection into memory (required for querying)
+        await self.client.load_collection(collection_name=collection_name)
 
         # Optionally store collection metadata about embedding and chunking
         try:
@@ -428,11 +499,21 @@ class MilvusVectorDatabase(VectorDatabase):
         )
         chunking_conf = coll_meta.get("chunking") if coll_meta else None
 
+        # Apply default chunking if no config is found (e.g., after server restart)
+        # Phase 8.5: Default to Sentence chunking (512 chars, 0 overlap) instead of None
+        if chunking_conf is None:
+            chunking_conf = {
+                "strategy": "Sentence",
+                "parameters": {"chunk_size": 512, "overlap": 0},
+            }
+            logger.info(
+                f"No chunking config found for '{target_collection}', using default: Sentence(512, 0)"
+            )
+
         data = []
         stats_per_doc: list[dict[str, Any]] = []
         total_chunks = 0
         build_start = time.perf_counter()
-        id_counter = 0
         document_ids: list[str] = []  # Track document IDs for return value
 
         # Process documents to ensure they have text content
@@ -527,14 +608,13 @@ class MilvusVectorDatabase(VectorDatabase):
 
                 data.append(
                     {
-                        "id": id_counter,
+                        # Remove "id" field to let Milvus auto-generate unique IDs
                         "url": doc.get("url", ""),
                         "text": chunk_text_content,
-                        "metadata": json.dumps(new_meta, ensure_ascii=False),
+                        "metadata": new_meta,  # Pass as dict for JSON field
                         "vector": doc_vector,
                     }
                 )
-                id_counter += 1
                 # yield to keep event loop responsive
                 await asyncio.sleep(0)
             # end per-doc tracking
@@ -552,71 +632,104 @@ class MilvusVectorDatabase(VectorDatabase):
 
         insert_duration_ms = 0
         if data:
-            insert_start = time.perf_counter()
-            try:
-                await self.client.insert(target_collection, data)
-            except Exception as e:
-                # Re-raise the exception to be handled by the caller
-                raise e
-            insert_duration_ms = int((time.perf_counter() - insert_start) * 1000)
+            # Wrap insert/flush/verify in lock if serialization is enabled
+            async def perform_write() -> None:
+                nonlocal insert_duration_ms
+                insert_start = time.perf_counter()
 
-            # Best-effort: ensure Milvus has flushed/loaded the inserted data so
-            # that subsequent queries reflect the new rows.
-            # CRITICAL: Must wait for flush to complete before loading.
-            try:
-                # Step 1: Issue flush command (non-blocking)
-                logger.info(f"Issuing flush command for: {target_collection}")
-                if hasattr(self.client, "flush"):
-                    try:
-                        # Try string format first (more common)
-                        await self.client.flush(target_collection)
-                    except Exception:
-                        # Fall back to list format if string format fails
-                        try:
-                            await self.client.flush([target_collection])
-                        except Exception:
-                            pass
+                expected_count = len(data)
+                # Track document_ids for verification (from metadata)
+                written_doc_ids = document_ids.copy()
 
-                # Step 2: CRITICAL - Poll get_collection_stats() until row_count reflects new data
-                # flush() is non-blocking, so we must poll until the data is sealed.
-                # search() works immediately because it reads "growing" segments.
-                # query() only works on "sealed" segments, which requires waiting for flush completion.
-                if hasattr(self.client, "get_collection_stats"):
-                    max_wait_time = 10.0  # Total seconds to wait
-                    poll_interval = 0.5  # Seconds between checks
-                    time_waited = 0.0
-                    sealed_data_exists = False
-                    expected_rows = total_chunks  # Number of chunks we just inserted
-
-                    logger.info(
-                        f"Waiting for flush to complete (polling stats, expecting {expected_rows} rows)..."
+                try:
+                    # Step 1: Insert data (Milvus will auto-generate IDs)
+                    await self.client.insert(target_collection, data)
+                    insert_duration_ms = int(
+                        (time.perf_counter() - insert_start) * 1000
                     )
-                    stats = {}
-                    while time_waited < max_wait_time:
-                        try:
-                            stats = await self.client.get_collection_stats(
-                                target_collection
-                            )
-                            current_row_count = stats.get("row_count", 0)
 
-                            # Check if row_count reflects the new data
-                            if current_row_count >= expected_rows:
-                                logger.info(f"Flush complete. Stats: {stats}")
-                                sealed_data_exists = True
+                    # Step 2: Flush
+                    logger.info(f"Issuing flush command for: {target_collection}")
+                    if hasattr(self.client, "flush"):
+                        try:
+                            await self.client.flush(target_collection)
+                        except Exception:
+                            try:
+                                await self.client.flush([target_collection])
+                            except Exception:
+                                pass
+
+                    # Step 3: Ground-truth verification - query by document_ids
+                    logger.info(
+                        f"Verifying write of {expected_count} chunks for {len(written_doc_ids)} documents..."
+                    )
+                    max_wait_time = 30.0
+                    poll_interval = 0.5
+                    start_time = time.time()
+                    verified = False
+
+                    while time.time() - start_time < max_wait_time:
+                        # Reload collection to see new segments
+                        if hasattr(self.client, "load_collection"):
+                            try:
+                                await self.client.load_collection(target_collection)
+                            except Exception:
+                                pass
+
+                        # Query by document_ids in metadata to verify
+                        try:
+                            # Build filter for all document_ids we just wrote
+                            doc_id_filters = " or ".join(
+                                [
+                                    f'metadata["document_id"] == "{doc_id}"'
+                                    for doc_id in written_doc_ids
+                                ]
+                            )
+
+                            results = await self.client.query(
+                                target_collection,
+                                filter=doc_id_filters,
+                                output_fields=["id", "metadata"],
+                                limit=expected_count + 100,  # Buffer
+                            )
+
+                            if len(results) >= expected_count:
+                                logger.info(
+                                    f"VERIFIED: All {expected_count} chunks are persisted and queryable"
+                                )
+                                verified = True
                                 break
+                            else:
+                                logger.debug(
+                                    f"Verification: Found {len(results)} of {expected_count} chunks, waiting..."
+                                )
                         except Exception as e:
-                            logger.warning(f"Error getting stats (will retry): {e}")
+                            logger.debug(f"Verification query failed (will retry): {e}")
 
                         await asyncio.sleep(poll_interval)
-                        time_waited += poll_interval
 
-                    if not sealed_data_exists:
-                        logger.warning(
-                            f"Timed out waiting for flush after {max_wait_time}s. "
-                            f"Stats: {stats}. Expected {expected_rows} rows, got {stats.get('row_count', 0)}."
+                    if not verified:
+                        logger.error(
+                            f"Write verification FAILED after {max_wait_time}s. Data may not be persisted!"
+                        )
+                        raise Exception(
+                            f"Milvus write verification failed for {target_collection}: {expected_count} chunks not queryable"
                         )
 
-                # Step 3: Now load the collection (will include newly sealed segments)
+                except Exception as e:
+                    logger.error(f"Write operation failed: {e}")
+                    raise e
+
+            # Execute write with or without lock based on configuration
+            if self._serialize_writes:
+                logger.debug("Acquiring write lock (Milvus Lite mode)")
+                async with self._write_lock:
+                    await perform_write()
+            else:
+                await perform_write()
+
+            # Legacy fallback: Also reload collection after write completes
+            try:
                 logger.info(f"Loading collection: {target_collection}")
                 if hasattr(self.client, "load_collection"):
                     try:
@@ -674,10 +787,10 @@ class MilvusVectorDatabase(VectorDatabase):
 
         try:
             # Query for all records with matching document_id in metadata
-            # Note: metadata is stored as VARCHAR (JSON string), so we use LIKE for filtering
+            # Note: metadata is stored as JSON, so we use JSON path for filtering
             results = await self.client.query(
                 target_collection,
-                filter=f'metadata LIKE \'%"document_id": "{document_id}"%\'',
+                filter=f'metadata["document_id"] == "{document_id}"',
                 output_fields=["id", "url", "text", "metadata"],
                 # Retrieve a reasonable upper bound of chunks to allow reassembly
                 limit=10000,
@@ -685,9 +798,9 @@ class MilvusVectorDatabase(VectorDatabase):
 
             chunks = []
             for doc in results:
-                try:
-                    metadata = json.loads(doc.get("metadata", "{}"))
-                except Exception:
+                # Metadata is already a dict with JSON field type
+                metadata = doc.get("metadata", {})
+                if not isinstance(metadata, dict):
                     metadata = {}
                 chunks.append(
                     {
@@ -773,25 +886,36 @@ class MilvusVectorDatabase(VectorDatabase):
 
         try:
             # Query all chunks to aggregate by document_id
-            # Use primary key filter to match all records: "id >= 0" matches all integer IDs
+            # Use primary key filter for reliable "get all" query
+            # With auto-increment IDs (positive 64-bit integers), id > 0 matches all records
+            # This uses the PK index and is much more reliable than full VARCHAR scans
             results = await self.client.query(
                 self.collection_name,
-                filter="id >= 0",  # Match all records using PK filter
+                filter="id > 0",  # PK-indexed filter - reliable and efficient
                 output_fields=["url", "metadata"],
-                limit=16384,  # Maximum limit supported by Milvus query()
+                limit=16384,  # High limit to get all chunks
             )
             logger.info(f"Number of chunks retrieved: {len(results)}")
+
+            # DEBUG: Log first few chunks
+            for i, chunk in enumerate(results[:5]):
+                metadata_str = str(chunk.get("metadata", "N/A"))[:200]
+                logger.info(
+                    f"DEBUG Chunk {i}: url={chunk.get('url', 'N/A')}, metadata={metadata_str}"
+                )
 
             # Group chunks by document_id and store full metadata
             docs_by_id: dict[str, dict[str, Any]] = {}
             for chunk in results:
-                try:
-                    metadata = json.loads(chunk.get("metadata", "{}"))
-                except Exception:
+                # Metadata is already a dict with JSON field type
+                metadata = chunk.get("metadata", {})
+                if not isinstance(metadata, dict):
                     metadata = {}
-
                 doc_id = metadata.get("document_id")
                 if not doc_id:
+                    logger.warning(
+                        f"DEBUG: Chunk without document_id: {chunk.get('url', 'N/A')}"
+                    )
                     continue  # Skip chunks without document_id
 
                 if doc_id not in docs_by_id:
@@ -806,6 +930,13 @@ class MilvusVectorDatabase(VectorDatabase):
 
             # Convert to list
             all_docs = list(docs_by_id.values())
+            logger.info(
+                f"DEBUG: Found {len(all_docs)} unique documents before filtering"
+            )
+            for doc in all_docs[:10]:
+                logger.info(
+                    f"DEBUG Doc: {doc['document_id']}, chunks={doc['chunks']}, url={doc['url']}"
+                )
 
             # Apply filters if provided
             if name_filter:
@@ -913,9 +1044,9 @@ class MilvusVectorDatabase(VectorDatabase):
 
             docs = []
             for doc in results:
-                try:
-                    metadata = json.loads(doc.get("metadata", "{}"))
-                except Exception:
+                # Metadata is already a dict with JSON field type
+                metadata = doc.get("metadata", {})
+                if not isinstance(metadata, dict):
                     metadata = {}
                 docs.append(
                     {
@@ -1257,7 +1388,7 @@ class MilvusVectorDatabase(VectorDatabase):
         for doc_id in document_ids:
             try:
                 # Step 1: Query for the primary key IDs of chunks to delete
-                query_expr = f'metadata LIKE \'%"document_id": "{doc_id}"%\''
+                query_expr = f'metadata["document_id"] == "{doc_id}"'
                 results = await self.client.query(
                     collection_name=self.collection_name,
                     filter=query_expr,
@@ -1414,9 +1545,9 @@ class MilvusVectorDatabase(VectorDatabase):
                     raw_similarity = None
                     if hasattr(hit_obj, "entity"):
                         entity = hit_obj.entity
-                        try:
-                            metadata = json.loads(entity.get("metadata", "{}"))
-                        except Exception:
+                        # Metadata is already a dict with JSON field type
+                        metadata = entity.get("metadata", {})
+                        if not isinstance(metadata, dict):
                             metadata = {}
                         doc_id = entity.get("id")
                         url = entity.get("url", "")
@@ -1438,14 +1569,10 @@ class MilvusVectorDatabase(VectorDatabase):
                             pass
                     elif isinstance(hit_obj, dict):
                         # Flat-dict return shape from some wrappers
-                        try:
-                            metadata = json.loads(hit_obj.get("metadata", "{}"))
-                        except Exception:
-                            metadata = (
-                                hit_obj.get("metadata")
-                                if hit_obj.get("metadata")
-                                else {}
-                            )
+                        # Metadata is already a dict with JSON field type
+                        metadata = hit_obj.get("metadata", {})
+                        if not isinstance(metadata, dict):
+                            metadata = {}
                         doc_id = hit_obj.get("id")
                         url = hit_obj.get("url", "")
                         text = hit_obj.get("text", "")
@@ -1651,7 +1778,8 @@ class MilvusVectorDatabase(VectorDatabase):
         """
         try:
             # Get all documents and perform keyword matching
-            documents = await self.list_documents(limit=100, offset=0)
+            # Use high limit to ensure we get all documents for keyword search
+            documents = await self.list_documents(limit=4096, offset=0)
 
             query_lower = query.lower()
             query_words = query_lower.split()
