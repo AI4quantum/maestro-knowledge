@@ -729,7 +729,7 @@ class TestMilvusVectorDatabase:
         mock_milvus_client.return_value = mock_client
         db = MilvusVectorDatabase()
         db.client = mock_client  # Directly set the client for the test
-        with pytest.raises(MilvusException, match="Delete failed"):
+        with pytest.warns(UserWarning, match="Failed to delete document"):
             await db.delete_documents(["1"])
 
     def test_parse_custom_headers(self) -> None:
