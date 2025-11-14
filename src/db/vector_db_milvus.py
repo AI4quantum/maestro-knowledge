@@ -731,12 +731,12 @@ class MilvusVectorDatabase(VectorDatabase):
 
         try:
             # Query all chunks to aggregate by document_id
-            # Use empty filter to get all records (required by Milvus query API)
+            # Use primary key filter to match all records: "id >= 0" matches all integer IDs
             results = await self.client.query(
                 self.collection_name,
-                filter="",  # Empty filter = get all
+                filter="id >= 0",  # Match all records using PK filter
                 output_fields=["url", "metadata"],
-                limit=100,  # Reduced limit for testing
+                limit=16384,  # Maximum limit supported by Milvus query()
             )
             logger.info(f"Number of chunks retrieved: {len(results)}")
 
@@ -1210,13 +1210,28 @@ class MilvusVectorDatabase(VectorDatabase):
             return
 
         # Delete all chunks for each document_id
+        # Use two-step approach: query for IDs first, then delete by ID list
+        # This is necessary because delete() doesn't support LIKE filters efficiently
         for doc_id in document_ids:
             try:
-                # Use filter expression to delete all chunks with this document_id
-                # Note: metadata is stored as VARCHAR (JSON string), so we use LIKE for filtering
-                expr = f'metadata LIKE \'%"document_id": "{doc_id}"%\''
+                # Step 1: Query for the primary key IDs of chunks to delete
+                query_expr = f'metadata LIKE \'%"document_id": "{doc_id}"%\''
+                results = await self.client.query(
+                    collection_name=self.collection_name,
+                    filter=query_expr,
+                    output_fields=["id"],  # Only fetch the primary key
+                    limit=16384,  # Maximum limit
+                )
+
+                if not results:
+                    continue  # No chunks found for this document_id
+
+                # Step 2: Extract the list of IDs and delete by ID
+                ids_to_delete = [item["id"] for item in results]
+                delete_expr = f"id in {ids_to_delete}"
+
                 await self.client.delete(
-                    collection_name=self.collection_name, filter=expr
+                    collection_name=self.collection_name, filter=delete_expr
                 )
             except Exception as e:
                 warnings.warn(f"Failed to delete document {doc_id}: {e}")
