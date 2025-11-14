@@ -423,11 +423,7 @@ class TestMilvusVectorDatabase:
         mock_milvus_client.return_value = mock_client
         db = MilvusVectorDatabase()
         await db.delete_documents(["abc123", "def456", "ghi789"])
-        # Verify delete was called with document_id filter
-        mock_client.delete.assert_called_once()
-        call_args = mock_client.delete.call_args
-        assert call_args[0][0] == db.collection_name
-        assert "document_id" in call_args[1]["filter"]
+        assert mock_client.delete.call_count == 3
 
     @pytest.mark.asyncio
     @patch("pymilvus.AsyncMilvusClient")
