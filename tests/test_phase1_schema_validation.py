@@ -69,7 +69,6 @@ async def test_flat_parameters_in_sample_tools() -> None:
 
     # Test a sample of critical tools (Phase 9 - database parameter removed)
     tools_to_test = [
-        ("query", ["query", "limit", "collection"]),
         ("search", ["query", "limit", "collection", "min_score", "metadata_filters"]),
         ("write_documents", ["collection", "documents"]),
         (
@@ -134,8 +133,8 @@ async def test_all_tools_accessible() -> None:
         "list_collections",
         "get_collection",
         "create_collection",
-        "query",
         "search",
+        "list_documents",
         "refresh_databases",
     ]
 

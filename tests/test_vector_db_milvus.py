@@ -349,20 +349,20 @@ class TestMilvusVectorDatabase:
                 "id": 1,
                 "url": "http://test1.com",
                 "text": "content1",
-                "metadata": """{"type": "webpage"}""",
+                "metadata": """{"document_id": "abc123", "type": "webpage"}""",
             },
             {
                 "id": 2,
                 "url": "http://test2.com",
                 "text": "content2",
-                "metadata": """{"type": "webpage"}""",
+                "metadata": """{"document_id": "def456", "type": "webpage"}""",
             },
         ]
         mock_milvus_client.return_value = mock_client
         db = MilvusVectorDatabase()
         docs = await db.list_documents(limit=2)
         assert len(docs) == 2
-        assert docs[0]["id"] == 1
+        assert docs[0]["document_id"] == "abc123"
         assert docs[0]["url"] == "http://test1.com"
 
     @pytest.mark.asyncio
@@ -422,21 +422,24 @@ class TestMilvusVectorDatabase:
         mock_client = AsyncMock()
         mock_milvus_client.return_value = mock_client
         db = MilvusVectorDatabase()
-        await db.delete_documents(["1", "2", "3"])
-        mock_client.delete.assert_called_once_with(db.collection_name, ids=[1, 2, 3])
+        await db.delete_documents(["abc123", "def456", "ghi789"])
+        # Verify delete was called with document_id filter
+        mock_client.delete.assert_called_once()
+        call_args = mock_client.delete.call_args
+        assert call_args[0][0] == db.collection_name
+        assert "document_id" in call_args[1]["filter"]
 
     @pytest.mark.asyncio
     @patch("pymilvus.AsyncMilvusClient")
-    async def test_delete_documents_invalid_ids(
+    async def test_delete_documents_empty_list(
         self, mock_milvus_client: AsyncMock
     ) -> None:
         mock_client = MagicMock()
         mock_milvus_client.return_value = mock_client
         db = MilvusVectorDatabase()
-        with pytest.raises(
-            ValueError, match="Milvus document IDs must be convertible to integers"
-        ):
-            await db.delete_documents(["1", "invalid", "3"])
+        # Empty list should not raise error, just do nothing
+        await db.delete_documents([])
+        mock_client.delete.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("pymilvus.AsyncMilvusClient")
@@ -537,7 +540,7 @@ class TestMilvusVectorDatabase:
     @pytest.mark.asyncio
     @patch("pymilvus.AsyncMilvusClient")
     async def test_get_document_success(self, mock_milvus_client: AsyncMock) -> None:
-        """Test successfully getting a document by name."""
+        """Test successfully getting a document by document_id."""
         mock_client = AsyncMock()
         mock_client.has_collection = AsyncMock(return_value=True)
         mock_client.query.return_value = [
@@ -545,30 +548,31 @@ class TestMilvusVectorDatabase:
                 "id": "chunk1",
                 "url": "test_url",
                 "text": "Hello ",
-                "metadata": """{"doc_name": "test_doc", "collection_name": "test_collection", "chunk_sequence_number": 1, "total_chunks": 2, "offset_start": 0, "offset_end": 6, "chunk_size": 6}""",
+                "metadata": """{"document_id": "abc123", "doc_name": "test_doc", "collection_name": "test_collection", "chunk_sequence_number": 1, "total_chunks": 2, "offset_start": 0, "offset_end": 6, "chunk_size": 6}""",
             },
             {
                 "id": "chunk2",
                 "url": "test_url",
                 "text": "World",
-                "metadata": """{"doc_name": "test_doc", "collection_name": "test_collection", "chunk_sequence_number": 2, "total_chunks": 2, "offset_start": 6, "offset_end": 11, "chunk_size": 5}""",
+                "metadata": """{"document_id": "abc123", "doc_name": "test_doc", "collection_name": "test_collection", "chunk_sequence_number": 2, "total_chunks": 2, "offset_start": 6, "offset_end": 11, "chunk_size": 5}""",
             },
         ]
         mock_milvus_client.return_value = mock_client
 
         db = MilvusVectorDatabase()
-        result = await db.get_document("test_doc", "test_collection")
+        result = await db.get_document("abc123", "test_collection")
 
         assert result["id"] in ("chunk1", "chunk2")
         assert result["url"] == "test_url"
         assert result["text"] == "Hello World"
+        assert result["metadata"]["document_id"] == "abc123"
         assert result["metadata"]["doc_name"] == "test_doc"
         assert result["metadata"]["collection_name"] == "test_collection"
 
         # Verify the query was called with correct parameters
         mock_client.query.assert_called_once_with(
             "test_collection",
-            filter='''metadata["doc_name"] == "test_doc"''',
+            filter='''metadata["document_id"] == "abc123"''',
             output_fields=["id", "url", "text", "metadata"],
             limit=10000,
         )
@@ -589,7 +593,7 @@ class TestMilvusVectorDatabase:
         db = MilvusVectorDatabase()
 
         with pytest.raises(ValueError, match="Collection 'test_collection' not found"):
-            await db.get_document("test_doc", "test_collection")
+            await db.get_document("abc123", "test_collection")
 
     @pytest.mark.asyncio
     @patch("pymilvus.AsyncMilvusClient")
@@ -606,9 +610,9 @@ class TestMilvusVectorDatabase:
 
         with pytest.raises(
             ValueError,
-            match="Document 'test_doc' not found in collection 'test_collection'",
+            match="Document 'abc123' not found in collection 'test_collection'",
         ):
-            await db.get_document("test_doc", "test_collection")
+            await db.get_document("abc123", "test_collection")
 
     @pytest.mark.asyncio
     @patch("pymilvus.AsyncMilvusClient")
@@ -620,7 +624,7 @@ class TestMilvusVectorDatabase:
         db = MilvusVectorDatabase()
 
         with pytest.raises(ValueError, match="Milvus client is not available"):
-            await db.get_document("test_doc", "test_collection")
+            await db.get_document("abc123", "test_collection")
 
     @pytest.mark.asyncio
     @patch("pymilvus.AsyncMilvusClient")

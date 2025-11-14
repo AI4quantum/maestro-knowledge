@@ -292,13 +292,13 @@ class TestWeaviateVectorDatabase:
             mock_object1.properties = {
                 "url": "http://test1.com",
                 "text": "content1",
-                "metadata": '{"type": "webpage"}',
+                "metadata": '{"document_id": "abc123", "type": "webpage"}',
             }
             mock_object2.uuid = "uuid2"
             mock_object2.properties = {
                 "url": "http://test2.com",
                 "text": "content2",
-                "metadata": '{"type": "webpage"}',
+                "metadata": '{"document_id": "def456", "type": "webpage"}',
             }
 
             mock_result.objects = [mock_object1, mock_object2]
@@ -311,9 +311,9 @@ class TestWeaviateVectorDatabase:
             documents = await db.list_documents(limit=2, offset=0)
 
             assert len(documents) == 2
-            assert documents[0]["id"] == "uuid1"
+            assert documents[0]["document_id"] == "abc123"
             assert documents[0]["url"] == "http://test1.com"
-            assert documents[1]["id"] == "uuid2"
+            assert documents[1]["document_id"] == "def456"
             assert documents[1]["url"] == "http://test2.com"
 
     @pytest.mark.asyncio
@@ -420,7 +420,7 @@ class TestWeaviateVectorDatabase:
 
     @pytest.mark.asyncio
     async def test_delete_documents(self) -> None:
-        """Test deleting documents from Weaviate."""
+        """Test deleting documents from Weaviate by document_id."""
         with (
             patch("weaviate.use_async_with_weaviate_cloud") as mock_connect,
             patch.dict(
@@ -433,16 +433,26 @@ class TestWeaviateVectorDatabase:
         ):
             mock_client = AsyncMock()
             mock_collection = AsyncMock()
+            mock_result = AsyncMock()
+
+            # Mock objects with document_ids
+            mock_obj1 = MagicMock()
+            mock_obj1.uuid = "uuid1"
+            mock_obj2 = MagicMock()
+            mock_obj2.uuid = "uuid2"
+            mock_result.objects = [mock_obj1, mock_obj2]
+
+            mock_collection.query.fetch_objects.return_value = mock_result
             mock_client.collections.get.return_value = mock_collection
             mock_connect.return_value = mock_client
 
             db = WeaviateVectorDatabase()
-            await db.delete_documents(["uuid1", "uuid2"])
+            await db.delete_documents(["abc123", "def456"])
 
-            # Verify delete_by_id was called for each document
+            # Verify fetch_objects was called with document_id filter
+            mock_collection.query.fetch_objects.assert_called()
+            # Verify delete_by_id was called for found UUIDs
             assert mock_collection.data.delete_by_id.call_count == 2
-            mock_collection.data.delete_by_id.assert_any_call("uuid1")
-            mock_collection.data.delete_by_id.assert_any_call("uuid2")
 
     @pytest.mark.asyncio
     async def test_delete_collection(self) -> None:
@@ -467,32 +477,7 @@ class TestWeaviateVectorDatabase:
             mock_client.collections.delete.assert_called_once_with("TestCollection")
             assert db.collection_name is None
 
-    @pytest.mark.skipif(
-        not WEAVIATE_AGENTS_AVAILABLE, reason="weaviate agents not available"
-    )
-    def test_create_query_agent(self) -> None:
-        """Test creating a query agent."""
-        with (
-            patch("weaviate.use_async_with_weaviate_cloud") as mock_connect,
-            patch("weaviate.agents.query.QueryAgent") as mock_query_agent,
-            patch.dict(
-                os.environ,
-                {
-                    "WEAVIATE_API_KEY": "test-key",
-                    "WEAVIATE_URL": "https://test.weaviate.network",
-                },
-            ),
-        ):
-            mock_client = MagicMock()
-            mock_connect.return_value = mock_client
-            mock_agent = MagicMock()
-            mock_query_agent.return_value = mock_agent
-
-            db = WeaviateVectorDatabase()
-            agent = db.create_query_agent()
-
-            # The actual QueryAgent is created, not the mock, so we just verify it's not None
-            assert agent is not None
+    # test_create_query_agent removed - query agent functionality removed in Phase 8.6
 
     @pytest.mark.asyncio
     async def test_cleanup(self) -> None:
@@ -598,7 +583,7 @@ class TestWeaviateVectorDatabase:
 
     @pytest.mark.asyncio
     async def test_get_document_success(self) -> None:
-        """Test successfully getting a document by name."""
+        """Test successfully getting a document by document_id."""
         with (
             patch("weaviate.use_async_with_weaviate_cloud") as mock_connect,
             patch.dict(
@@ -620,6 +605,7 @@ class TestWeaviateVectorDatabase:
                 "url": "test_url",
                 "text": "Hello ",
                 "metadata": {
+                    "document_id": "abc123",
                     "doc_name": "test_doc",
                     "collection_name": "test_collection",
                     "chunk_sequence_number": 1,
@@ -633,6 +619,7 @@ class TestWeaviateVectorDatabase:
                 "url": "test_url",
                 "text": "World",
                 "metadata": {
+                    "document_id": "abc123",
                     "doc_name": "test_doc",
                     "collection_name": "test_collection",
                     "chunk_sequence_number": 2,
@@ -647,11 +634,12 @@ class TestWeaviateVectorDatabase:
             mock_connect.return_value = mock_client
 
             db = WeaviateVectorDatabase()
-            result = await db.get_document("test_doc", "test_collection")
+            result = await db.get_document("abc123", "test_collection")
 
             assert result["id"] in ("chunk1", "chunk2")
             assert result["url"] == "test_url"
             assert result["text"] == "Hello World"
+            assert result["metadata"]["document_id"] == "abc123"
             assert result["metadata"]["doc_name"] == "test_doc"
             assert result["metadata"]["collection_name"] == "test_collection"
 
@@ -677,7 +665,7 @@ class TestWeaviateVectorDatabase:
             with pytest.raises(
                 ValueError, match="Collection 'test_collection' not found"
             ):
-                await db.get_document("test_doc", "test_collection")
+                await db.get_document("abc123", "test_collection")
 
     @pytest.mark.asyncio
     async def test_get_document_document_not_found(self) -> None:
@@ -707,13 +695,13 @@ class TestWeaviateVectorDatabase:
 
             with pytest.raises(
                 ValueError,
-                match="Document 'test_doc' not found in collection 'test_collection'",
+                match="Document 'abc123' not found in collection 'test_collection'",
             ):
-                await db.get_document("test_doc", "test_collection")
+                await db.get_document("abc123", "test_collection")
 
     @pytest.mark.asyncio
-    async def test_get_document_no_matching_doc_name(self) -> None:
-        """Test getting a document when no document has the specified name."""
+    async def test_get_document_no_matching_document_id(self) -> None:
+        """Test getting a document when no document has the specified document_id."""
         with (
             patch("weaviate.use_async_with_weaviate_cloud") as mock_connect,
             patch.dict(
@@ -728,12 +716,13 @@ class TestWeaviateVectorDatabase:
             mock_collection = AsyncMock()
             mock_result = AsyncMock()
 
-            # Create mock object with different doc_name
+            # Create mock object with different document_id
             mock_object = MagicMock()
             mock_object.properties = {
                 "url": "test_url",
                 "text": "test content",
                 "metadata": {
+                    "document_id": "different123",
                     "doc_name": "different_doc",
                     "collection_name": "test_collection",
                 },
