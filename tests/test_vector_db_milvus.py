@@ -610,7 +610,7 @@ class TestMilvusVectorDatabase:
 
         with pytest.raises(
             ValueError,
-            match="Document 'abc123' not found in collection 'test_collection'",
+            match="Document with ID 'abc123' not found in collection 'test_collection'",
         ):
             await db.get_document("abc123", "test_collection")
 

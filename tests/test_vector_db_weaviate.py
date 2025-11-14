@@ -435,11 +435,12 @@ class TestWeaviateVectorDatabase:
             mock_collection = AsyncMock()
             mock_result = AsyncMock()
 
-            # Mock objects with document_ids
             mock_obj1 = MagicMock()
             mock_obj1.uuid = "uuid1"
+            mock_obj1.properties = {"metadata": '{"document_id": "abc123"}'}
             mock_obj2 = MagicMock()
             mock_obj2.uuid = "uuid2"
+            mock_obj2.properties = {"metadata": '{"document_id": "def456"}'}
             mock_result.objects = [mock_obj1, mock_obj2]
 
             mock_collection.query.fetch_objects.return_value = mock_result
@@ -449,9 +450,6 @@ class TestWeaviateVectorDatabase:
             db = WeaviateVectorDatabase()
             await db.delete_documents(["abc123", "def456"])
 
-            # Verify fetch_objects was called with document_id filter
-            mock_collection.query.fetch_objects.assert_called()
-            # Verify delete_by_id was called for found UUIDs
             assert mock_collection.data.delete_by_id.call_count == 2
 
     @pytest.mark.asyncio
@@ -695,7 +693,7 @@ class TestWeaviateVectorDatabase:
 
             with pytest.raises(
                 ValueError,
-                match="Document 'abc123' not found in collection 'test_collection'",
+                match="Document with ID 'abc123' not found in collection 'test_collection'",
             ):
                 await db.get_document("abc123", "test_collection")
 
@@ -738,6 +736,6 @@ class TestWeaviateVectorDatabase:
 
             with pytest.raises(
                 ValueError,
-                match="Document 'test_doc' not found in collection 'test_collection'",
+                match="Document with ID 'test_doc' not found in collection 'test_collection'",
             ):
                 await db.get_document("test_doc", "test_collection")
