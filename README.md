@@ -1,4 +1,9 @@
-ou # Maestro Knowledge
+> ⚠️ **Archived Repository**
+>
+> This project is no longer maintained and has been archived as of April 2026.
+> - No new features or bug fixes will be accepted.
+
+# Maestro Knowledge
 
 A modular vector database interface supporting multiple backends (Weaviate, Milvus) with a unified API and flexible embedding strategies.
 
